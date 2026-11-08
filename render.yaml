@@ -6,7 +6,6 @@ services:
     region: singapore
     numInstances: 1
     healthCheckPath: /healthz
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: DATABASE_URL
         sync: false

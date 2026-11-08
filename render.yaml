@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: nro-hoi-ban
+    runtime: docker
+    plan: starter
+    region: singapore
+    numInstances: 1
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL_ROOT_CERT
+        value: /app/config/ca.pem
+      - key: DB_SCHEMA
+        value: nro_web
+      - key: DB_POOL_MAX
+        value: "3"
+      - key: MAX_PLAYERS
+        value: "5"
+      - key: INVITE_CODE
+        sync: false
+      - key: TZ
+        value: Asia/Ho_Chi_Minh

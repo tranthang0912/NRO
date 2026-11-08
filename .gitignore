@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+target/
+build/
+dist/
+release/
+*.log
+*.rar
+*.jar
+Mod_Local/
+nbproject/private/
+.local/
+node_modules/
+playwright-report/
+test-results/

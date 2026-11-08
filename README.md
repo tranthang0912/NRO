@@ -51,7 +51,7 @@ Không nhập tài khoản, mật khẩu, admin, nhân vật hoặc lịch sử 
 
    Không chép file `.env` chứa mật khẩu lên GitHub. Trên máy đang sửa, `.env` đã được cấu hình riêng để kiểm thử kết nối Aiven; file này được loại khỏi Git, Docker context và ZIP.
 
-4. Giữ **Instances = 1**, không bật autoscaling. Blueprint chọn gói `starter`; có thể đổi `plan: free` để thử nghiệm. Free có chế độ ngủ khi không hoạt động, thời gian khởi động lại và các hạn mức; dùng gói trả phí nếu muốn máy chủ luôn sẵn sàng. Xem [giới hạn Free](https://render.com/docs/free).
+4. Giữ **Instances = 1**, không bật autoscaling. Blueprint đã chọn `plan: free`, dùng PostgreSQL Aiven hiện có và không tạo tài nguyên trả phí. Free có chế độ ngủ khi không hoạt động, thời gian khởi động lại và các hạn mức. Xem [giới hạn Free](https://render.com/docs/free).
 
 5. Deploy. Khi log có `NRO Web ready on port ...`, `/healthz` trả HTTP 200 và Render báo Live, mở link `https://TEN_DICH_VU.onrender.com`. Chia sẻ **đúng cùng một link** cho cả nhóm. Mỗi người tạo một tài khoản khác nhau, vào game rồi bấm **Về làng**.
 

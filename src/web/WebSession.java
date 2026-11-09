@@ -79,6 +79,43 @@ public final class WebSession extends MySession {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(msg.getData()))) {
             switch (msg.command) {
                 case -25, -26 -> notice(in.readUTF());
+                case 38 -> {
+                    int npc = in.readShort();
+                    String text = in.readUTF();
+                    int portrait = in.available() >= 2 ? in.readShort() : -1;
+                    send(java.util.Map.of("type", "tutorial", "npc", npc, "text", text, "portrait", portrait));
+                }
+                case 124 -> {
+                    int npc = in.readShort();
+                    send(java.util.Map.of("type", "npcChat", "npc", npc, "text", in.readUTF()));
+                }
+                case -34 -> {
+                    int action = in.readUnsignedByte();
+                    if (action == 0) {
+                        int icon = in.readShort();
+                        String name = in.readUTF();
+                        int x = in.readShort(), y = in.readShort();
+                        in.readByte(); // Tree level is included in its name.
+                        int peas = in.readUnsignedShort(), capacity = in.readUnsignedShort();
+                        in.readUTF(); in.readInt(); // Status text and timer.
+                        JsonArray offsets = new JsonArray();
+                        int size = in.readUnsignedByte();
+                        for (int i = 0; i < size; i++) {
+                            offsets.add(GameWorld.JSON.toJsonTree(new int[]{in.readByte(), in.readByte()}));
+                        }
+                        send(java.util.Map.of("type", "tree", "icon", icon, "name", name, "x", x, "y", y,
+                            "peas", peas, "capacity", capacity, "offsets", offsets));
+                    } else if (action == 1) {
+                        menuNpc = consts.ConstNpc.DAU_THAN;
+                        JsonArray choices = new JsonArray();
+                        while (in.available() > 0) choices.add(in.readUTF());
+                        menuChoices = choices.size();
+                        send(java.util.Map.of("type", "menu", "npc", menuNpc, "text", "Đậu thần", "choices", choices));
+                    } else if (action == 2 && player != null) {
+                        send(java.util.Map.of("type", "treeHarvest", "peas", in.readUnsignedShort()));
+                        send(PlayerView.inventory(player));
+                    }
+                }
                 case 32 -> {
                     menuNpc = in.readShort(); String text = in.readUTF();
                     menuChoices = in.readUnsignedByte();

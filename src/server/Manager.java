@@ -165,8 +165,8 @@ public final class Manager {
         map.initMob(mapTemp.mobTemp, mapTemp.mobLevel, mapTemp.mobHp, mapTemp.mobX, mapTemp.mobY);
         map.initNpc(mapTemp.npcId, mapTemp.npcX, mapTemp.npcY);
     }
-    if (web.WebConfig.ENABLED) return;
     new NonInteractiveNPC().initNonInteractiveNPC();
+    if (web.WebConfig.ENABLED) return;
     new Thread(() -> {
         try {
             while (!Maintenance.isRunning) {

@@ -4,8 +4,8 @@
   const canvas = $('world'), ctx = canvas.getContext('2d', { alpha: false });
   const images = new Map(), actors = new Map(), effects = [], bubbles = new Map();
   let socket, joined = false, register = false, catalog = { parts: {}, npcs: {}, items: {} };
-  let map = null, state = null, stats = null, inventory = null, ownId = 0, selected = null, selectedSkill = 0;
-  let currentPanel = '', bagTab = 'bag', lastState = 0, lastFrame = performance.now(), frameTime = 0;
+  let tree = null, map = null, state = null, stats = null, inventory = null, ownId = 0, selected = null, selectedSkill = 0;
+  let currentPanel = '', bagTab = 'bag', itemSelection = -1, lastFrame = performance.now(), frameTime = 0;
   let width = 960, height = 540, cameraX = 0, cameraY = 0, scale = 2, heartbeat, inputTimer, loginTimer;
   let reconnectTimer, retryCount = 0, intentionalDisconnect = false;
   const input = { x: 0, y: 0, jump: false }, keys = new Set(), touchKeys = new Set();
@@ -23,7 +23,7 @@
     const e = element('div', text, 'toast'); $('toasts').append(e); setTimeout(() => e.remove(), 4700);
     while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
   }
-  function authReady() { clearTimeout(loginTimer); $('authSubmit').disabled = false; $('authSubmit').textContent = register ? 'Tạo nhân vật và vào game →' : 'Vào thế giới →'; }
+  function authReady() { clearTimeout(loginTimer); $('authSubmit').disabled = false; $('authSubmit').textContent = register ? 'Tạo nhân vật' : 'Đăng nhập'; }
   function connect() {
     clearTimeout(reconnectTimer);intentionalDisconnect=false;
     clearInterval(heartbeat); clearInterval(inputTimer);
@@ -75,11 +75,14 @@
       case 'notice':
         if (!joined) { $('authError').textContent = clean(data.text); authReady(); } else toast(clean(data.text)); break;
       case 'map':
-        map = data; selected = null; actors.clear();
-        $('mapName').replaceChildren(document.createTextNode(data.name), element('small', 'Khu 0 · Thế giới chung'));
-        $('npcDialog').close(); break;
+        map = ClassicScene.prepare(data); state = tree = null; selected = null; actors.clear();
+        stopMovement(); closePanel();
+        $('mapName').textContent = data.name;
+        if ($('npcDialog').dataset.kind !== 'tutorial') $('npcDialog').close(); break;
       case 'state': {
-        state = data; lastState = performance.now();
+        if (data.map !== map?.id) break;
+        state = data;
+        $('mapName').textContent = `${map.name} · Khu ${data.zone}`;
         $('onlineCount').textContent = `${data.online}/5`;
         const present = new Set();
         for (const a of data.players) { present.add(a.id); const old = actors.get(a.id); actors.set(a.id, { ...a, px: old?.px ?? a.x, py: old?.py ?? a.y, moving: old ? old.x !== a.x : false }); }
@@ -90,8 +93,11 @@
         updateContext(); break;
       }
       case 'stats':
+        const previousStats = stats;
         stats = data; updateHUD(); updateSkills();
-        if (currentPanel && ['character', 'task', 'social'].includes(currentPanel)) renderPanel(); break;
+        const key = { character: 'potential', task: 'task', social: 'clan' }[currentPanel];
+        if (key && JSON.stringify(previousStats?.[key]) !== JSON.stringify(data[key])) renderPanel(); break;
+      case 'openBox': bagTab = 'box'; togglePanel('inventory'); renderPanel(); break;
       case 'inventory': inventory = data; if (currentPanel === 'inventory') renderPanel(); break;
       case 'chat': {
         const row = element('div'); row.append(element('b', `${data.name}: `), document.createTextNode(data.text)); $('chatLog').append(row);
@@ -99,6 +105,20 @@
         bubbles.set(data.id, { text: data.text, until: performance.now() + 4500 }); break;
       }
       case 'menu': openMenu(data); break;
+      case 'tree': tree = data; break;
+      case 'treeHarvest': if (tree) tree.peas = data.peas; break;
+      case 'tutorial': {
+        openDialog(clean(data.text), [button('Tiếp tục', () => $('npcDialog').close())]);
+        $('npcDialog').dataset.kind = 'tutorial';
+        if (data.portrait >= 0) {
+          const portrait = element('img', undefined, 'npc-portrait');
+          portrait.src = iconUrl(data.portrait); portrait.alt = '';
+          $('npcText').before(portrait);
+        }
+        break;
+      }
+      case 'npcChat':
+        bubbles.set(`npc${data.npc}`, { text: clean(data.text), until: performance.now() + 4500 }); break;
       case 'input': openInput(data); break;
       case 'confirmItem': openDialog(clean(data.text), [button('Đồng ý', () => { $('npcDialog').close(); send({ type: 'confirmItem' }); }), button('Hủy', () => $('npcDialog').close())]); break;
       case 'shop': renderShop(data); break;
@@ -120,7 +140,22 @@
     $('hpBar').style.width = `${Math.max(0, Math.min(100, stats.hp / Math.max(1, stats.maxHp) * 100))}%`;
     $('mpBar').style.width = `${Math.max(0, Math.min(100, stats.mp / Math.max(1, stats.maxMp) * 100))}%`;
     $('hpText').textContent = `${number(stats.hp)} / ${number(stats.maxHp)}`; $('mpText').textContent = `${number(stats.mp)} / ${number(stats.maxMp)}`;
-    $('powerText').textContent = `Sức mạnh ${number(stats.power)}`;
+    $('powerText').textContent = `SM: ${number(stats.power)}`;
+    $('panelPower').textContent = `Sức mạnh: ${number(stats.power)}`;
+    $('panelPotential').textContent = `Tiềm năng: ${number(stats.potential)}`;
+    const balances = [stats.gold, stats.gem, stats.ruby].join('/');
+    if ($('wallet').dataset.balances !== balances) {
+      $('wallet').dataset.balances = balances;
+      $('wallet').replaceChildren(...[
+        [stats.gold, 'imgmoney', 'Vàng'], [stats.gem, 'imgdiamond', 'Ngọc'], [stats.ruby, 'imgdiamond', 'Hồng ngọc']
+      ].map(([amount, icon, title]) => {
+        const slot = element('span'), picture = element('img');
+        picture.src = `/classic/assets/x1/mainimage/mytexture2d${icon}.png`;
+        picture.alt = title;
+        slot.append(picture, document.createTextNode(number(amount)));
+        return slot;
+      }));
+    }
   }
   let skillSignature = '';
   function updateSkills() {
@@ -136,44 +171,69 @@
     }
     document.querySelectorAll('.skill').forEach(b => b.classList.toggle('active', +b.dataset.skill === selectedSkill));
   }
-  function openDialog(text, choices) { stopMovement(); $('npcText').textContent = text; $('npcChoices').replaceChildren(...choices); if (!$('npcDialog').open) $('npcDialog').showModal(); }
+  function resetDialog() {
+    delete $('npcDialog').dataset.kind;
+    $('npcDialog').querySelector('.npc-portrait')?.remove();
+  }
+  function openDialog(text, choices) { resetDialog(); stopMovement(); $('npcText').textContent = text; $('npcChoices').replaceChildren(...choices); if (!$('npcDialog').open) $('npcDialog').showModal(); }
   function openMenu(data) {
     openDialog(clean(data.text), data.choices.map((choice, index) => button(clean(choice), () => { $('npcDialog').close(); send({ type: 'menu', id: data.npc, choice: index }); })));
   }
   function openInput(data) {
-    stopMovement(); $('npcText').textContent = clean(data.title); const form = element('form');
+    resetDialog(); stopMovement(); $('npcText').textContent = clean(data.title); const form = element('form');
     for (const field of data.fields) { const label = element('label', field.label); const i = element('input'); i.required = true; i.maxLength = 160; i.type = field.kind === 2 ? 'password' : 'text'; label.append(i); form.append(label); }
     const submit = element('button', 'Xác nhận', 'primary'); submit.type = 'submit'; form.append(submit);
     form.addEventListener('submit', e => { e.preventDefault(); const values = [...form.querySelectorAll('input')].map(i => i.value); $('npcDialog').close(); send({ type: 'input', values }); });
     $('npcChoices').replaceChildren(form); if (!$('npcDialog').open) $('npcDialog').showModal();
   }
   function togglePanel(name) {
-    if (currentPanel === name && !$('panel').hidden) { closePanel(); return; }
+    if (currentPanel === 'trade' && name !== 'trade') send({ type: 'trade', action: 3 });
+    if (currentPanel === name && !$('panel').hidden) return;
+    itemSelection = -1;
     currentPanel = name; $('panel').hidden = false; stopMovement();
     if (name === 'inventory') send({ type: 'inventory' }); renderPanel();
   }
-  function closePanel() { currentPanel = ''; $('panel').hidden = true; }
+  function closePanel() {
+    if (currentPanel === 'trade') send({ type: 'trade', action: 3 });
+    currentPanel = ''; itemSelection = -1; $('panel').hidden = true;
+  }
   function statRow(label, value, action) { const e = element('div', '', 'stat-row'); e.append(element('span', label), element('b', value)); if (action) e.append(action); return e; }
   function renderPanel() {
     const root = $('panelContent'); root.replaceChildren();
-    const titles = { inventory: 'Hành trang', character: 'Nhân vật', task: 'Nhiệm vụ', social: 'Đồng đội', help: 'Hướng dẫn' }; $('panelTitle').textContent = titles[currentPanel] || 'Game';
+    $('panelTitle').textContent = own()?.name || $('playerName').textContent;
+    for (const tab of $('panelTabs').querySelectorAll('button')) {
+      const active = tab.dataset.panel === currentPanel;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-pressed', active);
+    }
     if (currentPanel === 'inventory') {
-      root.append(element('p', `Vàng ${number(stats?.gold)} · Ngọc ${number(stats?.gem)} · Hồng ngọc ${number(stats?.ruby)}`));
-      const tabs = element('div', '', 'panel-tabs'); for (const [key, label] of [['bag', 'Túi đồ'], ['body', 'Trang bị'], ['box', 'Rương']]) tabs.append(button(label, () => { bagTab = key; renderPanel(); }, bagTab === key ? 'active' : '')); root.append(tabs);
-      if (bagTab === 'box') root.append(element('p', 'Về nhà để cất và lấy vật phẩm.'));
-      const list = inventory?.[bagTab] || [], nonempty = list.filter(i => i.id >= 0);
-      if (!nonempty.length) root.append(element('p', 'Chưa có vật phẩm.'));
-      for (const item of nonempty) {
-        const row = element('div', '', 'item-row'), image = element('img'); image.src = iconUrl(item.icon); image.alt = '';
-        const info = element('div', '', 'item-info'); info.append(element('b', `${item.name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`)); item.options.forEach(o => info.append(element('small', o)));
-        const actions = element('div');
-        if (bagTab === 'bag') {
-          if ([0, 1, 2, 3, 4, 5, 11, 12, 32].includes(item.type)) actions.append(button('Mặc', () => send({ type: 'equip', index: item.index })));
-          else actions.append(button('Dùng', () => send({ type: 'use', index: item.index })));
-          actions.append(button('Cất', () => send({ type: 'store', index: item.index })),button('Bán',()=>send({type:'sell',index:item.index})));
-        } else actions.append(button(bagTab === 'body' ? 'Tháo' : 'Lấy', () => send({ type: bagTab === 'body' ? 'unequip' : 'withdraw', index: item.index })));
-        row.append(image, info, actions); root.append(row);
+      const tabs = element('div', '', 'panel-tabs');
+      for (const [key, label] of [['bag', 'Túi đồ'], ['body', 'Trang bị'], ['box', 'Rương']]) {
+        tabs.append(button(label, () => { bagTab = key; itemSelection = -1; renderPanel(); }, bagTab === key ? 'active' : ''));
       }
+      root.append(tabs);
+      const grid = element('div', '', 'bag-grid');
+      const slots = inventory?.[bagTab] || [];
+      const details = element('div', '', 'item-detail');
+      for (const item of slots) {
+        const slot = button('', () => {
+          itemSelection = item.index;
+          for (const other of grid.children) other.classList.toggle('selected', other === slot);
+          describeItem(details, item);
+        }, 'bag-slot');
+        slot.disabled = item.id < 0;
+        slot.setAttribute('aria-label', item.id < 0 ? 'Ô trống' : item.name);
+        if (!slot.disabled) {
+          const image = element('img');
+          image.src = iconUrl(item.icon); image.alt = '';
+          slot.append(image);
+          if (item.quantity > 1) slot.append(element('small', number(item.quantity)));
+          if (item.index === itemSelection) slot.classList.add('selected');
+        }
+        grid.append(slot);
+      }
+      root.append(grid, details);
+      describeItem(details, slots.find(item => item.index === itemSelection && item.id >= 0));
     } else if (currentPanel === 'character') {
       root.append(statRow('Sức mạnh', number(stats?.power)), statRow('Tiềm năng', number(stats?.potential)));
       [['HP tối đa', stats?.maxHp, 0], ['KI tối đa', stats?.maxMp, 1], ['Sức đánh', stats?.damage, 2], ['Giáp', stats?.defense, 3], ['Chí mạng', stats?.crit || 0, 4]].forEach(([label, value, stat]) => root.append(statRow(label, number(value), button('+', () => send({ type: 'upgrade', stat, amount: 1 }), 'panel-action'))));
@@ -184,12 +244,10 @@
       const t = stats?.task;
       if (!t) { root.append(element('p', 'Gặp NPC trong làng để nhận nhiệm vụ.')); return; }
       root.append(element('h3', t.name), element('p', clean(t.detail)));
-      t.subtasks?.forEach((sub, index) => { const line = element('p', `${index < t.index ? '✓' : index === t.index ? '→' : '·'} ${sub.name}${sub.maxCount > 0 ? ` (${sub.count}/${sub.maxCount})` : ''}`); if (index === t.index) line.style.color = '#ffce85'; root.append(line); });
-      root.append(button('Về nhà gặp ông', () => send({ type: 'home' }), 'panel-action'));
+      t.subtasks?.forEach((sub, index) => { const line = element('p', `${index < t.index ? '✓' : index === t.index ? '→' : '·'} ${sub.name}${sub.maxCount > 0 ? ` (${sub.count}/${sub.maxCount})` : ''}`); if (index === t.index) line.classList.add('task-current'); root.append(line); });
     } else if (currentPanel === 'social') {
       root.append(element('h3', `Cùng bản đồ · ${state?.players.filter(p => !p.boss).length || 0} người`));
       state?.players.filter(p => !p.boss).forEach(p => root.append(statRow(`${p.id === ownId ? '● ' : '○ '}${p.name}`, `HP ${number(p.hp)}`,p.id!==ownId?button('Giao dịch',()=>send({type:'trade',action:0,peer:p.id}),'panel-action'):null)));
-      root.append(button('Tập hợp về Làng Aru', () => send({ type: 'rally' }), 'panel-action'));
       root.append(button('Bang hội',()=>send({type:'clans'}),'panel-action'));
       if (stats?.clan) root.append(element('h3', stats.clan.name)); else root.append(element('p', 'Gặp NPC quy lão để tạo hoặc tham gia bang hội.'));
       if (stats?.pet) {
@@ -197,10 +255,29 @@
         ['Đi theo', 'Bảo vệ', 'Tấn công', 'Về nhà', 'Hợp thể'].forEach((text, status) => root.append(button(text, () => send({ type: 'petStatus', status }), 'panel-action')));
       }
     } else {
-      const lines = [['Di chuyển', 'WASD hoặc phím mũi tên. Giữ W/↑ để bay và tiêu hao KI.'], ['Nhảy', 'Space hoặc nút ↥ trên điện thoại.'], ['Tấn công', 'Chọn quái rồi nhấn J hoặc ĐÁNH. Phím 1–9 chọn kỹ năng.'], ['Tương tác', 'Đến gần NPC hoặc lối đi rồi nhấn E.'], ['Nhặt vật phẩm', 'Đến gần vật phẩm rồi nhấn F.'], ['Hồi phục', 'Nhấn R hoặc ĐẬU để ăn đậu trong túi.'], ['Gặp bạn bè', 'Tất cả bấm Về làng, ở chung khu 0.'], ['Trò chuyện', 'Nhấn Enter, nhập tin nhắn và gửi.'], ['Lưu tiến trình', 'Tự lưu định kỳ và khi thoát. Dùng nút Thoát để lưu ngay.']];
+      const lines = [['Di chuyển', 'WASD hoặc phím mũi tên. Giữ W/↑ để bay và tiêu hao KI.'], ['Nhảy', 'Space hoặc nút ↥ trên điện thoại.'], ['Tấn công', 'Chọn quái rồi nhấn J hoặc ĐÁNH. Phím 1–9 chọn kỹ năng.'], ['Tương tác', 'Đến gần NPC hoặc lối đi rồi nhấn E.'], ['Nhặt vật phẩm', 'Đến gần vật phẩm rồi nhấn F.'], ['Hồi phục', 'Nhấn R hoặc ĐẬU để ăn đậu trong túi.'], ['Gặp bạn bè', 'Đến cùng bản đồ và khu để thấy nhau.'], ['Trò chuyện', 'Nhấn Enter, nhập tin nhắn và gửi.'], ['Lưu tiến trình', 'Tự lưu định kỳ và khi thoát. Dùng nút Thoát để lưu ngay.']];
+      root.append(button('Thoát game', logout, 'panel-action'));
       for (const [title, text] of lines) root.append(element('h3', title), element('p', text));
     }
   }
+  function describeItem(root, item) {
+    root.replaceChildren();
+    if (!item) {
+      root.append(element('span', bagTab === 'box' ? 'Rương ở nhà của nhân vật.' : 'Chọn một ô để xem vật phẩm.'));
+      return;
+    }
+    root.append(element('b', item.name));
+    for (const option of item.options) root.append(element('small', option));
+    const command = (text, type) => button(text, () => send({ type, index: item.index }), 'panel-action');
+    if (bagTab === 'bag') {
+      const equipment = [0, 1, 2, 3, 4, 5, 11, 12, 32].includes(item.type);
+      root.append(command(equipment ? 'Mặc' : 'Dùng', equipment ? 'equip' : 'use'));
+      if (map?.id >= 21 && map.id <= 23) root.append(command('Cất', 'store'));
+      root.append(command('Bán', 'sell'));
+    } else if (bagTab === 'body') root.append(command('Tháo', 'unequip'));
+    else root.append(command('Lấy', 'withdraw'));
+  }
+
   function renderShop(data) {
     currentPanel = 'shop'; $('panel').hidden = false; $('panelTitle').textContent = 'Cửa hàng';
     const root = $('panelContent'); root.replaceChildren();
@@ -260,22 +337,33 @@
     const list = type === 'npc' ? map?.npcs : type === 'portal' ? map?.portals : type === 'drop' ? state?.drops : state?.mobs.filter(m => !m.dead);
     return list?.reduce((a, b) => !a || distance(me, b) < distance(me, a) ? b : a, null);
   }
+  function activePortal(player) {
+    return map?.portals.find(p => player.x >= p.minX && player.x <= p.maxX && player.y >= p.minY && player.y <= p.maxY);
+  }
+  let contextSignature = '';
   function updateContext() {
-    const root = $('context'); root.replaceChildren(); const me = own(); if (!me || me.dead) { root.hidden = true; return; }
-    const npc = nearest('npc'), portal = nearest('portal'), drop = nearest('drop');
-    if (npc && distance(me, npc) <= 175) root.append(button(`${npc.name} · E`, () => send({ type: 'npc', id: npc.id })));
-    if (portal && Math.abs(me.x - portal.x) <= 135) root.append(button(`${portal.name} →`, () => send({ type: 'portal', index: portal.index })));
-    if (drop && distance(me, drop) < 90) root.append(button('Nhặt · F', () => send({ type: 'pickup', id: drop.id })));
-    root.hidden = !root.children.length;
+    const root = $('context'), me = own();
+    if (!me || me.dead) { root.hidden = true; $('target').hidden = true; return; }
+    const npc = nearest('npc'), portal = activePortal(me), drop = nearest('drop');
+    const actions = [];
+    if (portal) actions.push([`${portal.name} →`, { type: 'portal', index: portal.index }]);
+    if (npc && distance(me, npc) <= 60) actions.push([npc.name, { type: 'npc', id: npc.id }]);
+    if (drop && distance(me, drop) < 90) actions.push(['Nhặt', { type: 'pickup', id: drop.id }]);
+    const signature = JSON.stringify(actions);
+    if (contextSignature !== signature) {
+      contextSignature = signature;
+      root.replaceChildren(...actions.map(([label, data]) => button(label, () => send(data))));
+    }
+    root.hidden = !actions.length;
     const target = selected?.kind === 'mob' ? state.mobs.find(m => m.id === selected.id) : selected?.kind === 'player' ? actors.get(selected.id) : null;
     $('target').hidden = !target;
-    if (target) $('target').replaceChildren(document.createTextNode(target.name), element('small', `${number(target.hp)} / ${number(target.maxHp)}`));
+    if (target) $('target').textContent = `${target.name} · ${number(target.hp)} / ${number(target.maxHp)}`;
   }
   function interact() {
     const me = own(); if (!me) return;
-    const npc = nearest('npc'), portal = nearest('portal');
-    if (npc && distance(me, npc) < 175) send({ type: 'npc', id: npc.id });
-    else if (portal && Math.abs(me.x - portal.x) < 135) send({ type: 'portal', index: portal.index });
+    const portal = activePortal(me), npc = nearest('npc');
+    if (portal) send({ type: 'portal', index: portal.index });
+    else if (npc && distance(me, npc) <= 60) send({ type: 'npc', id: npc.id });
   }
   function attack() {
     if (!joined || $('npcDialog').open || !stats) return;
@@ -285,7 +373,7 @@
   }
   function sendMovement() {
     if (!joined) return;
-    const blocked = $('npcDialog').open || document.activeElement?.tagName === 'INPUT';
+    const blocked = $('npcDialog').open || !$('panel').hidden || document.activeElement?.matches('input,select,textarea');
     const left = keys.has('a') || keys.has('arrowleft') || touchKeys.has('left'), right = keys.has('d') || keys.has('arrowright') || touchKeys.has('right');
     const up = keys.has('w') || keys.has('arrowup') || touchKeys.has('up'), down = keys.has('s') || keys.has('arrowdown') || touchKeys.has('down');
     input.x = blocked ? 0 : Number(right) - Number(left); input.y = blocked ? 0 : Number(down) - Number(up);
@@ -297,66 +385,79 @@
     scale = innerWidth < 600 ? 1.5 : innerWidth < 1100 ? 1.8 : 2.2; width = innerWidth / scale; height = innerHeight / scale;
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0); ctx.imageSmoothingEnabled = false;
   }
-  function label(text, x, y, color = '#f0f6d5', size = 8) {
-    ctx.font = `600 ${size}px Segoe UI,Arial`; ctx.textAlign = 'center'; ctx.lineWidth = 2.5; ctx.strokeStyle = '#1c382b'; ctx.strokeText(text, x, y); ctx.fillStyle = color; ctx.fillText(text, x, y);
-  }
-  function background(time) {
-    const namek = map && [1, 2, 3].includes(map.tileId); const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, namek ? '#87bba1' : '#81bec2'); sky.addColorStop(0.7, namek ? '#bfdbac' : '#d3e2b5'); sky.addColorStop(1, '#9bbd86'); ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = '#f7e8b0'; ctx.beginPath(); ctx.arc(width * .68 - cameraX * .02, height * .21, 26, 0, Math.PI * 2); ctx.fill();
-    for (let layer = 0; layer < 3; layer++) {
-      const base = height * (.48 + layer * .12); ctx.fillStyle = ['#83b5a0', '#669c83', '#467b61'][layer]; ctx.beginPath(); ctx.moveTo(0, height);
-      const offset = cameraX * (.08 + layer * .06);
-      for (let x = -100; x < width + 150; x += 12) { const y = base - (Math.sin((x + offset) / (100 + 35 * layer)) * 27 + Math.sin((x + offset) / 47) * 13); ctx.lineTo(x, y); }
-      ctx.lineTo(width, height); ctx.fill();
+  let bitmapGlyphs;
+  fetch('/classic/assets/glyphs.json')
+    .then(response => { if (!response.ok) throw new Error('Font unavailable'); return response.json(); })
+    .then(glyphs => { bitmapGlyphs = glyphs; })
+    .catch(error => console.error(error));
+
+  function label(text, x, y, color = 'white') {
+    const font = img(`/classic/assets/x1/myfont/tahoma_7_${color}.png`);
+    if (!bitmapGlyphs || !font.complete || !font.naturalWidth) return;
+    const glyphs = [...String(text).normalize('NFC')].map(character => bitmapGlyphs[character] || bitmapGlyphs['?']);
+    const textWidth = glyphs.reduce((sum, glyph) => sum + glyph[2] + 1, 0);
+    let left = Math.round(x - textWidth / 2);
+    for (const [sourceX, sourceY, glyphWidth, glyphHeight] of glyphs) {
+      ctx.drawImage(font, sourceX, sourceY, glyphWidth, glyphHeight,
+        left, Math.round(y - 11), glyphWidth, glyphHeight);
+      left += glyphWidth + 1;
     }
-    const cloud = img('/assets/res/x1/b00-1');
-    if (cloud.complete && cloud.naturalWidth) { ctx.globalAlpha = .45; for (let x = -200; x < width + 200; x += 168) ctx.drawImage(cloud, x - (cameraX * .1 % 168), height * .48, 168, 80); ctx.globalAlpha = 1; }
-    for (let i = 0; i < 7; i++) { const x = ((i * 173 + time * .006) % (width + 80)) - 40; const y = height * .2 + (i % 3) * 28; ctx.fillStyle = '#f8f5d940'; ctx.fillRect(x, y, 38, 4); ctx.fillRect(x + 9, y - 5, 20, 5); }
   }
-  function ground() {
-    if (!map?.tiles) {
-      const gy = height * .78; ctx.fillStyle = '#536b39'; ctx.fillRect(0, gy, width, height); ctx.fillStyle = '#93b25b'; ctx.fillRect(0, gy, width, 6);
-      for (let i = 0; i < width; i += 48) { ctx.fillStyle = i % 96 ? '#758d49' : '#859d51'; ctx.fillRect(i, gy + 2, 21, 2); }
-      // A quiet training scene behind the welcome screen, using original artwork.
-      drawActor({ x: width * .34, y: gy, head: 64, body: 1, leg: 2, facing: 1, name: '', id: -10 }, true);
+  function drawPortals() {
+    const arrow = img(iconUrl(248));
+    for (const p of map?.portals || []) {
+      const x = p.x - cameraX, y = p.maxY - cameraY;
+      if (x < -100 || x > width + 100 || y < 0 || y > height + 40) continue;
+      if (arrow.complete && arrow.naturalWidth) ctx.drawImage(arrow, Math.round(x - arrow.naturalWidth / 2), Math.round(y - 31));
+      label(p.name, x, y - 35, 'yellow');
+    }
+  }
+  function spritePart(id, frame) {
+    const parts = catalog.parts[id];
+    const part = parts?.[frame]?.[0] > 0 ? parts[frame] : parts?.find(part => part[0] > 0);
+    if (!part) return null;
+    const picture = img(iconUrl(part[0]));
+    return picture.complete && picture.naturalWidth ? { picture, dx: part[1], dy: part[2] } : null;
+  }
+
+  function drawNpc(npc) {
+    if (![3, 4].includes(npc.id)) {
+      drawActor({ ...npc, id: `npc${npc.id}`, facing: 1 });
       return;
     }
-    const tops = new Set(map.top), startX = Math.max(0, Math.floor(cameraX / 24)), endX = Math.min(map.tiles[0].length, Math.ceil((cameraX + width) / 24));
-    const startY = Math.max(0, Math.floor(cameraY / 24)), endY = Math.min(map.tiles.length, Math.ceil((cameraY + height) / 24));
-    for (let y = startY; y < endY; y++) for (let x = startX; x < endX; x++) {
-      const tile = map.tiles[y][x]; if (!tile) continue;
-      const px = x * 24 - cameraX, py = y * 24 - cameraY, top = tops.has(tile);
-      ctx.fillStyle = top ? '#6e8b43' : '#7d7551'; ctx.fillRect(px, py, 24, 24);
-      if (top) { ctx.fillStyle = '#a0b858'; ctx.fillRect(px, py, 24, 4); ctx.fillStyle = '#c3cc75'; ctx.fillRect(px + ((x * 3) % 7), py, 5, 2); ctx.fillStyle = '#526537'; ctx.fillRect(px, py + 6, 24, 2); }
-      else { ctx.fillStyle = '#918260'; ctx.fillRect(px + 3, py + 5, 5, 3); ctx.fillRect(px + 14, py + 17, 6, 2); ctx.fillStyle = '#6b6447'; ctx.fillRect(px + 17, py + 4, 3, 4); }
+    const x = npc.x - cameraX, y = npc.y - cameraY;
+    const picture = img(iconUrl(npc.id === 3 ? 265 : tree?.icon ?? [84, 371, 378][map.planet] ?? 84));
+    if (!picture.complete || !picture.naturalWidth) return;
+    const left = Math.round(x - picture.naturalWidth / 2), top = Math.round(y - picture.naturalHeight);
+    ctx.drawImage(picture, left, top);
+    if (npc.id === 4 && tree) {
+      const pea = img('/classic/assets/x1/mainimage/mytexture2dhatdau.png');
+      if (pea.complete && pea.naturalWidth) {
+        for (const [dx, dy] of tree.offsets.slice(0, tree.peas)) ctx.drawImage(pea, left + dx, top + dy);
+      }
     }
-    // Portals remain attached to the original map waypoints.
-    for (const p of map.portals) {
-      const x = p.x - cameraX, y = Math.min(p.y, map.height - 48) - cameraY;
-      if (x < -100 || x > width + 100) continue;
-      ctx.fillStyle = '#ffde8c'; ctx.globalAlpha = .8; ctx.beginPath(); ctx.moveTo(x - 7, y - 25); ctx.lineTo(x + 7, y - 25); ctx.lineTo(x, y - 17); ctx.fill(); ctx.globalAlpha = 1;
-      label(p.name, x, y - 34, '#fff1b4', 7);
-    }
+    label(npc.id === 4 && tree ? `${tree.name} (${tree.peas}/${tree.capacity})` : npc.name, x, top - 4, 'yellow');
   }
-  function drawPart(id, frame, x, bottom, mirror) {
-    const parts = catalog.parts[id]; if (!parts?.length) return false;
-    const part = parts[Math.min(frame, parts.length - 1)] || parts[0], image = img(iconUrl(part[0]));
-    if (!image.complete || !image.naturalWidth) return false;
-    ctx.save(); ctx.translate(Math.round(x), Math.round(bottom)); if (mirror < 0) ctx.scale(-1, 1);
-    ctx.drawImage(image, -Math.floor(image.naturalWidth / 2) + (part[1] || 0), -image.naturalHeight + (part[2] || 0)); ctx.restore(); return true;
-  }
-  function drawActor(a, demo = false) {
-    const x = (demo ? a.x : a.px ?? a.x) - (demo ? 0 : cameraX), y = (demo ? a.y : a.py ?? a.y) - (demo ? 0 : cameraY);
+  function drawActor(a) {
+    const x = (a.px ?? a.x) - cameraX, y = (a.py ?? a.y) - cameraY;
     if (x < -80 || x > width + 80 || y < -80 || y > height + 80) return;
-    const walking = a.moving && !a.dead, frame = walking ? 1 + Math.floor(frameTime / 100) % 5 : 0, bob = walking ? Math.floor(frameTime / 90) % 2 : 0;
-    ctx.fillStyle = '#223b3b44'; ctx.beginPath(); ctx.ellipse(x, y, 12, 3, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.save(); if (a.dead) { ctx.globalAlpha = .5; ctx.translate(x, y); ctx.rotate(-Math.PI / 2); ctx.translate(-x, -y); }
-    drawPart(a.leg, frame, x, y, a.facing); drawPart(a.body, frame, x, y - 11 - bob, a.facing); const head = drawPart(a.head, 0, x, y - 23 - bob, a.facing);
-    if (!head) { ctx.fillStyle = a.gender === 1 ? '#81b66b' : '#edc28d'; ctx.fillRect(x - 6, y - 40, 12, 14); ctx.fillStyle = a.boss ? '#864660' : '#eab564'; ctx.fillRect(x - 7, y - 25, 14, 13); }
+    const walking = a.moving && !a.dead, frame = walking ? 1 + Math.floor(frameTime / 100) % 5 : 0;
+    const shadow = img('/classic/assets/x1/mainimage/mytexture2dbong.png');
+    if (shadow.complete && shadow.naturalWidth) ctx.drawImage(shadow, Math.round(x - shadow.naturalWidth / 2), Math.round(y - 3));
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    if (a.dead) { ctx.globalAlpha = .6; ctx.rotate(-Math.PI / 2); }
+    if (a.facing < 0) ctx.scale(-1, 1);
+    let bottom = 0;
+    for (const part of [spritePart(a.leg, frame), spritePart(a.body, frame), spritePart(a.head, 0)]) {
+      if (!part) continue;
+      const { picture, dx, dy } = part;
+      const top = bottom - picture.naturalHeight;
+      ctx.drawImage(picture, -Math.floor(picture.naturalWidth / 2) + dx, top + Math.max(-2, Math.min(2, dy)));
+      bottom = top + 2;
+    }
     ctx.restore();
-    if (a.name) label(a.name, x, y - 54, a.id === ownId ? '#ffe09d' : a.boss ? '#ffb59d' : '#f0f6d5', 8);
-    if (a.id === ownId) { ctx.fillStyle = '#ffce73'; ctx.fillRect(x - 2, y + 5, 4, 2); }
+    if (a.name) label(a.name, x, y + Math.min(-30, bottom - 4), a.id === ownId ? 'yellow' : a.boss ? 'red' : 'white');
     const bubble = bubbles.get(a.id); if (bubble && bubble.until > frameTime) {
       const text = bubble.text.length > 35 ? bubble.text.slice(0, 35) + '…' : bubble.text;
       ctx.font = '8px Segoe UI'; const w = ctx.measureText(text).width + 12; ctx.fillStyle = '#f2efda'; ctx.fillRect(x - w / 2, y - 79, w, 15); ctx.fillStyle = '#203a29'; ctx.textAlign = 'center'; ctx.fillText(text, x, y - 68);
@@ -373,26 +474,22 @@
       }else {const sw = Math.min(36, sheet.naturalWidth), sh = Math.min(36, sheet.naturalHeight); ctx.drawImage(sheet, 0, 0, sw, sh, x - sw / 2, y - sh, sw, sh);}
     }
     else { ctx.fillStyle = '#c3af53'; ctx.beginPath(); ctx.ellipse(x, y - 10, 12, 9, 0, 0, Math.PI * 2); ctx.fill(); }
-    label(m.name, x, y - 45, '#e7e7ad', 7);
+    label(m.name, x, y - 45, 'yellow');
     if (m.hp < m.maxHp || selected?.kind === 'mob' && selected.id === m.id) { ctx.fillStyle = '#2b3e2a'; ctx.fillRect(x - 16, y - 40, 32, 3); ctx.fillStyle = '#d18460'; ctx.fillRect(x - 16, y - 40, 32 * Math.max(0, m.hp / m.maxHp), 3); }
     if (selected?.kind === 'mob' && selected.id === m.id) { ctx.strokeStyle = '#ffe29d'; ctx.lineWidth = 1; ctx.strokeRect(x - 19, y - 35, 38, 36); }
-  }
-  function decorations(front){
-    for(const d of map?.decorations||[]){
-      if((d.layer>=4)!==front)continue;
-      const image=img(`/assets/item_bg_temp/x1/${d.image}.png`);
-      if(image.complete&&image.naturalWidth){const x=d.x-cameraX-image.naturalWidth/2,y=d.y-cameraY-image.naturalHeight;if(x+image.naturalWidth>-20&&x<width+20)ctx.drawImage(image,Math.round(x),Math.round(y));}
-    }
   }
   function draw(time) {
     frameTime = time; const dt = Math.min(70, time - lastFrame); lastFrame = time;
     for (const a of actors.values()) { a.px += (a.x - a.px) * Math.min(1, dt / 75); a.py += (a.y - a.py) * Math.min(1, dt / 75); }
     const me = own();
-    if (me && map) { cameraX += (Math.max(0, Math.min(map.width - width, me.px - width / 2)) - cameraX) * .14; cameraY += (Math.max(0, Math.min(map.height - height, me.py - height * .58)) - cameraY) * .14; }
+    if (me && map) { cameraX += (Math.max(0, Math.min(map.width - width, me.px - width / 2)) - cameraX) * .14; cameraY += (Math.max(0, Math.min(map.height - height, me.py - height * .68)) - cameraY) * .14; }
     else { cameraX = cameraY = 0; }
-    background(time); ground();decorations(false);decorations(true);
+    ClassicScene.background(ctx, img, map, width, height, cameraX, cameraY);
+    ClassicScene.decorations(ctx, img, map, width, height, cameraX, cameraY, false);
+    ClassicScene.terrain(ctx, img, map, width, height, cameraX, cameraY);
+    drawPortals();
     if (joined && map && state) {
-      for (const n of map.npcs) drawActor({ ...n, id: `npc${n.id}`, facing: 1 });
+      for (const n of map.npcs) drawNpc(n);
       for (const m of state.mobs) drawMob(m);
       for (const d of state.drops) { const image = img(iconUrl(d.icon)); if (image.complete && image.naturalWidth) ctx.drawImage(image, d.x - cameraX - image.naturalWidth / 2, d.y - cameraY - image.naturalHeight - 3 + Math.sin(time / 220) * 2); }
       [...actors.values()].sort((a, b) => a.y - b.y).forEach(a => drawActor(a));
@@ -401,11 +498,24 @@
         const progress = 1 - (e.until - time) / 400, x = e.x + (e.targetX - e.x) * progress - cameraX, y = e.y + (e.targetY - e.y) * progress - cameraY - 18;
         ctx.fillStyle = '#fff8c9'; ctx.shadowColor = '#ffc95f'; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(x, y, 3 + 3 * Math.sin(progress * Math.PI), 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       }
-      const ac = $('avatar').getContext('2d'); ac.clearRect(0, 0, 58, 58);
-      const head = catalog.parts[me?.head]?.[0]; if (head) { const image = img(iconUrl(head[0])); if (image.complete && image.naturalWidth) { ac.imageSmoothingEnabled = false; ac.drawImage(image, 29 - image.naturalWidth, 28 - image.naturalHeight, image.naturalWidth * 2, image.naturalHeight * 2); } }
+      ClassicScene.decorations(ctx, img, map, width, height, cameraX, cameraY, true);
+      if (!$('panel').hidden) drawPortrait(me);
       document.querySelectorAll('.skill').forEach(b => { const skill = stats?.skills.find(s => s.id === +b.dataset.skill); if (skill) b.querySelector('.cooldown').style.height = `${Math.max(0, Math.min(100, (skill.cooldown - (Date.now() - skill.lastUse)) / Math.max(1, skill.cooldown) * 100))}%`; });
     }
     requestAnimationFrame(draw);
+  }
+  let portraitHead;
+  function drawPortrait(player) {
+    const head = catalog.parts[player?.head]?.[0];
+    if (!head || head[0] === portraitHead) return;
+    const image = img(iconUrl(head[0]));
+    if (!image.complete || !image.naturalWidth) return;
+    const avatar = $('avatar');
+    const painter = avatar.getContext('2d');
+    painter.clearRect(0, 0, avatar.width, avatar.height);
+    painter.imageSmoothingEnabled = false;
+    painter.drawImage(image, 24 - image.naturalWidth, 24 - image.naturalHeight, image.naturalWidth * 2, image.naturalHeight * 2);
+    portraitHead = head[0];
   }
   canvas.addEventListener('pointerdown', e => {
     if (!joined || !state || !map) return;
@@ -430,9 +540,9 @@
     else if (key === 'e') interact();
     else if (key === 'f') { const drop = nearest('drop'); if (drop) send({ type: 'pickup', id: drop.id }); }
     else if (key === 'r') send({ type: 'pea' });
-    else if (key === 'i') togglePanel('inventory');
+    else if (key === 'i') { if ($('panel').hidden) togglePanel('inventory'); else closePanel(); }
     else if (key === 'escape') closePanel();
-    else if (key === 'enter') { stopMovement(); $('chatInput').focus(); }
+    else if (key === 'enter') openChat();
     else if (/^[1-9]$/.test(key)) { const skill = stats?.skills.filter(s => s.level > 0)[+key - 1]; if (skill) { selectedSkill = skill.id; updateSkills(); } }
     sendMovement();
   });
@@ -445,10 +555,18 @@
   $('touchJump').addEventListener('pointerdown', e => { e.preventDefault(); input.jump = true; sendMovement(); });
   $('touchAttack').addEventListener('click', attack); $('touchInteract').addEventListener('click', interact); $('touchPea').addEventListener('click', () => send({ type: 'pea' }));
   document.querySelectorAll('[data-panel]').forEach(b => b.addEventListener('click', () => togglePanel(b.dataset.panel)));
+  function openChat() {
+    stopMovement();
+    $('chat').hidden = false;
+    $('chatInput').focus();
+  }
+  $('openPanel').addEventListener('click', () => togglePanel('inventory'));
+  $('chatToggle').addEventListener('click', () => {
+    if ($('chat').hidden) openChat(); else $('chat').hidden = true;
+  });
   $('closePanel').addEventListener('click', closePanel);
-  $('rally').addEventListener('click', () => send({ type: 'rally' })); $('home').addEventListener('click', () => send({ type: 'home' }));
   $('revive').addEventListener('click', () => send({ type: 'revive' }));
-  $('logout').addEventListener('click', () => {intentionalDisconnect=true;sessionStorage.removeItem('nro-resume');clearTimeout(reconnectTimer);send({ type: 'logout' }); joined = false; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = stats = null; actors.clear(); closePanel(); setTimeout(connect, 300); });
+  function logout() {intentionalDisconnect=true;sessionStorage.removeItem('nro-resume');clearTimeout(reconnectTimer);send({ type: 'logout' }); joined = false; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = stats = null; actors.clear(); closePanel(); $('chat').hidden = true; setTimeout(connect, 300); }
   $('reconnectButton').addEventListener('click', () => { $('reconnect').hidden = true; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = null; actors.clear(); connect(); });
   $('fullscreen').addEventListener('click', () => { const operation = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); operation?.catch(() => toast('Trình duyệt chưa hỗ trợ toàn màn hình.')); });
   function authTab(value) { register = value; $('registerFields').hidden = !value; $('characterName').required = value; $('password').autocomplete = value ? 'new-password' : 'current-password'; $('loginTab').classList.toggle('active', !value); $('registerTab').classList.toggle('active', value); $('loginTab').setAttribute('aria-selected', !value); $('registerTab').setAttribute('aria-selected', value); $('authError').textContent = ''; authReady(); }

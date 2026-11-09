@@ -19,14 +19,72 @@ public class SmokeTest {
         JsonObject waitFor(String type,int seconds)throws Exception {long end=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);while(System.nanoTime()<end){var j=queue.poll(1,TimeUnit.SECONDS);if(j!=null){if(j.get("type").getAsString().equals(type))return j;if(j.get("type").getAsString().equals("notice"))System.out.println("NOTICE "+j.get("text").getAsString());}}throw new AssertionError("Timed out waiting for "+type);}
         public void close(){send(Map.of("type","logout"));ws.sendClose(1000,"test finished").join();}
     }
+    static JsonObject ownPlayer(JsonObject state,long id) {
+        return state.getAsJsonArray("players").asList().stream().map(JsonElement::getAsJsonObject)
+            .filter(player->player.get("id").getAsLong()==id).findFirst().orElseThrow();
+    }
+    static JsonObject walkThrough(Bot bot,long id,JsonObject map,int destination)throws Exception {
+        JsonObject portal=map.getAsJsonArray("portals").asList().stream().map(JsonElement::getAsJsonObject)
+            .filter(entry->entry.get("map").getAsInt()==destination).findFirst().orElseThrow();
+        int xMin=portal.get("minX").getAsInt(),xMax=portal.get("maxX").getAsInt();
+        int yMin=portal.get("minY").getAsInt(),yMax=portal.get("maxY").getAsInt();
+        long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(18);
+        int direction=0;
+        while(System.nanoTime()<deadline) {
+            JsonObject player=ownPlayer(bot.waitFor("state",5),id);
+            int x=player.get("x").getAsInt(),y=player.get("y").getAsInt();
+            if(x>=xMin&&x<=xMax&&y>=yMin&&y<=yMax) {
+                bot.send(Map.of("type","move","x",0,"y",0,"jump",false));
+                bot.send(Map.of("type","portal","index",portal.get("index").getAsInt()));
+                JsonObject changed=bot.waitFor("map",5);
+                if(changed.get("id").getAsInt()!=destination)throw new AssertionError("Wrong portal destination: "+changed.get("id"));
+                return changed;
+            }
+            int next=x<xMin?1:x>xMax?-1:0;
+            if(next!=direction) {
+                bot.send(Map.of("type","move","x",next,"y",0,"jump",false));
+                direction=next;
+            }
+        }
+        throw new AssertionError("Could not reach portal to "+destination);
+    }
     public static void main(String[] args)throws Exception {
         String suffix=String.valueOf(System.currentTimeMillis()).substring(7);
         List<Bot> bots=new ArrayList<>();String password="Test-"+UUID.randomUUID();
         try {
             for(int i=0;i<5;i++) {
                 Bot b=new Bot();bots.add(b);b.waitFor("hello",5);
-                b.send(Map.of("type","register","username","qa"+suffix+i,"password",password,"name","qa"+suffix+i,"gender",i%3,"invite",""));
-                b.waitFor("joined",20);b.waitFor("map",5);b.waitFor("state",5);
+                b.send(Map.of("type","register","username","qa"+suffix+i,"password",password,"name","qa"+suffix+i,"gender",0,"invite",""));
+                long id=b.waitFor("joined",20).get("id").getAsLong();
+                JsonObject start=b.waitFor("map",5);
+                if(start.get("id").getAsInt()!=39)throw new AssertionError("Incorrect Earth starting map");
+                JsonObject home=walkThrough(b,id,start,21);
+                if(i==0) {
+                    b.send(Map.of("type","move","x",1,"y",0,"jump",false));
+                    long walkEnd=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                    while(ownPlayer(b.waitFor("state",5),id).get("x").getAsInt()<200) {
+                        if(System.nanoTime()>walkEnd)throw new AssertionError("Cannot reach Gohan");
+                    }
+                    b.send(Map.of("type","move","x",0,"y",0,"jump",false));
+                    b.send(Map.of("type","npc","id",0));
+                    var tutorial=b.waitFor("tutorial",5);
+                    if(!tutorial.get("text").getAsString().contains("rađa"))throw new AssertionError("Missing original NPC quest dialogue");
+                    b.send(Map.of("type","move","x",1,"y",0,"jump",false));
+                    long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                    int x=0;
+                    while(x<310&&System.nanoTime()<deadline) {
+                        x=ownPlayer(b.waitFor("state",5),id).get("x").getAsInt();
+                    }
+                    b.send(Map.of("type","move","x",0,"y",0,"jump",false));
+                    if(x<310)throw new AssertionError("Cannot reach bean tree");
+                    b.send(Map.of("type","npc","id",4));
+                    var treeMenu=b.waitFor("menu",5);
+                    if(treeMenu.get("npc").getAsInt()!=4)throw new AssertionError("Wrong tree menu");
+                    b.send(Map.of("type","menu","id",4,"choice",0));
+                    if(b.waitFor("treeHarvest",5).get("peas").getAsInt()!=0)throw new AssertionError("Beans were not harvested");
+                    System.out.println("PASS: Original home, NPC quest dialogue and bean harvest.");
+                }
+                walkThrough(b,id,home,0);
             }
             for(Bot b:bots)b.queue.clear();
             for(Bot b:bots){var st=b.waitFor("state",5);if(st.get("online").getAsInt()!=5||st.getAsJsonArray("players").size()<5)throw new AssertionError("Players do not share the map");}
@@ -73,9 +131,7 @@ public class SmokeTest {
             }else throw new AssertionError("No village mobs loaded");
             first.queue.clear();first.send(Map.of("type","inventory"));var inv=first.waitFor("inventory",5);if(inv.getAsJsonArray("body").isEmpty())throw new AssertionError("missing equipment");
             first.waitFor("stats",5);
-            first.send(Map.of("type","home"));var home=first.waitFor("map",5);if(home.get("id").getAsInt()!=21)throw new AssertionError("home map "+home);
-            first.send(Map.of("type","rally"));first.waitFor("map",5);
-            System.out.println("PASS: Inventory and home/shared-village transitions.");
+            System.out.println("PASS: Inventory received from the original character.");
             first.send(Map.of("type","move","x",1,"y",0,"jump",false));Thread.sleep(700);first.send(Map.of("type","move","x",0,"y",0,"jump",false));
             first.queue.clear();var finalState=first.waitFor("state",5);int savedX=finalState.getAsJsonArray("players").asList().stream().map(JsonElement::getAsJsonObject).filter(j->j.get("id").getAsLong()==id).findFirst().orElseThrow().get("x").getAsInt();
             first.send(Map.of("type","logout"));Thread.sleep(1000);

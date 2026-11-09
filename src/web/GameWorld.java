@@ -101,18 +101,14 @@ public final class GameWorld implements AutoCloseable {
                 if(!text.isEmpty()) for(var other:sessions) if(other.player!=null&&other.player.zone==p.zone) other.send(Map.of("type","chat","id",p.id,"name",p.name,"text",text));
             }
             case "portal" -> portal(s,bounded(d,"index",0,p.zone.map.wayPoints.size()-1));
-            case "rally" -> {
-                if(System.currentTimeMillis()-s.lastAction<3000)return;
-                s.lastAction=System.currentTimeMillis();
-                ChangeMapService.gI().changeMap(p,WebConfig.START_MAP,0,120,336);
-                s.sentMap=-1;
-            }
-            case "home" -> {ChangeMapService.gI().changeMapBySpaceShip(p,21+p.gender,0,300);s.sentMap=-1;}
             case "npc" -> {
                 int id=bounded(d,"id",0,1000);
-                var npc=p.zone.map.npcs.stream().filter(n->n.tempId==id).findFirst().orElseThrow(()->new IllegalArgumentException("NPC không ở map này."));
-                if(distance(p.location.x,p.location.y,npc.cx,npc.cy)>180)throw new IllegalArgumentException("Hãy đến gần NPC.");
-                npc.openBaseMenu(p);
+                if(p.zone.map.getNpc(p,id)==null)throw new IllegalArgumentException("Hãy đến gần NPC.");
+                MenuController.gI().openMenuNPC(s,id,p);
+                if(id==consts.ConstNpc.RUONG_DO&&MapService.gI().isHome(p.zone.map.mapId)){
+                    s.send(PlayerView.inventory(p));
+                    s.send(Map.of("type","openBox"));
+                }
             }
             case "menu" -> {
                 int choice=bounded(d,"choice",0,s.menuChoices-1);int id=bounded(d,"id",-1,1000);
@@ -260,17 +256,17 @@ public final class GameWorld implements AutoCloseable {
                     Player p=NTTSqlFetcher.login(s,new AntiLogin());
                     if(p==null)throw new IllegalArgumentException("Không tải được nhân vật. Hãy kiểm tra tài khoản hoặc thử lại.");
                     s.player=p;p.setSession(s);p.setClothes.setup();p.nPoint.calPoint();
-                    if(p.zone==null)p.zone=MapService.gI().getMapById(WebConfig.START_MAP).zones.get(0);
+                    if(p.zone==null)p.zone=MapService.gI().getMapById(39 + p.gender).zones.get(0);
                     // All normal maps have one shared zone. Never create per-device copies.
                     if(!MapService.gI().isMapPhoBan(p.zone.map.mapId))p.zone=p.zone.map.zones.get(0);
-                    p.location.x=Math.max(48,Math.min(p.zone.map.mapWidth-48,p.location.x));
-                    p.location.y=p.zone.map.yPhysicInTop(p.location.x,48);
+                    p.location.x=Math.max(0,Math.min(p.zone.map.mapWidth-1,p.location.x));
+                    p.location.y=Math.max(0,Math.min(p.zone.map.mapHeight-1,p.location.y));
                     p.zone.addPlayer(p);p.idMark.setLoadedAllDataPlayer(true);
                     Client.gI().put(p);s.joinedGame=true;s.authenticated=true;
                     s.pp=null;online++;
                     joined(s);
                     s.send(PlayerView.inventory(p));s.send(PlayerView.stats(p));
-                    s.notice("Chào "+p.name+"! Bạn bè có thể bấm Về làng để gặp nhau.");
+                    s.notice("Chào " + p.name + "!");
                 } catch(Exception e){s.notice(e.getMessage());System.err.println("Player login failure: "+e.getMessage());if(s.player!=null)remove(s);}
             }));
         } catch(RejectedExecutionException e){s.busySending=false;s.notice("Máy chủ đang xử lý đăng nhập, hãy thử lại.");}
@@ -296,8 +292,14 @@ public final class GameWorld implements AutoCloseable {
     private void requireBox(Player p) { if(!MapService.gI().isHome(p.zone.map.mapId))throw new IllegalArgumentException("Hãy về nhà để sử dụng rương."); }
     private void portal(WebSession s,int index) {
         Player p=s.player;var wp=p.zone.map.wayPoints.get(index);
-        if(distance(p.location.x,p.location.y,(wp.minX+wp.maxX)/2,Math.min(wp.maxY,p.location.y))>140)throw new IllegalArgumentException("Hãy đến gần lối đi.");
-        ChangeMapService.gI().changeMap(p,wp.goMap,0,wp.goX,wp.goY);s.sentMap=-1;
+        if (MapService.gI().getWaypointPlayerIn(p) != wp) {
+            throw new IllegalArgumentException("Hãy đi vào lối chuyển khu vực.");
+        }
+        ChangeMapService.gI().changeMapWaypoint(p);
+        s.sentMap = -1;
+        s.direction = s.vertical = 0;
+        s.velocityY = 0;
+        s.jump = false;
     }
     private void attack(WebSession s,JsonObject d) {
         Player p=s.player;if(p.isDie())return;
@@ -316,7 +318,7 @@ public final class GameWorld implements AutoCloseable {
     private void move(WebSession s) {
         Player p=s.player;if(p==null||p.zone==null||p.isDie()||p.effectSkill.isHaveEffectSkill()||TransactionService.gI().check(p))return;
         var map=p.zone.map;
-        int x=Math.max(24,Math.min(map.mapWidth-25,p.location.x+s.direction*6));
+        int x=Math.max(0,Math.min(map.mapWidth-1,p.location.x+s.direction*6));
         int y=p.location.y;
         int ground=map.yPhysicInTop(x,Math.max(0,y-18));
         if(ground<=0)ground=map.mapHeight-48;
@@ -358,7 +360,11 @@ public final class GameWorld implements AutoCloseable {
             if(ticks%2==0){
                 Map<map.Zone,String> snapshots=new HashMap<>();
                 for(var s:sessions)if(s.connected&&s.authenticated&&s.player!=null&&s.player.zone!=null) {
-                    if(s.sentMap!=s.player.zone.map.mapId){s.sentMap=s.player.zone.map.mapId;s.send(GameCatalog.map(s.player.zone.map));}
+                    if(s.sentMap!=s.player.zone.map.mapId){
+                        s.sentMap=s.player.zone.map.mapId;
+                        s.send(GameCatalog.map(s.player.zone.map));
+                        if(MapService.gI().isHome(s.sentMap)&&s.player.magicTree!=null)s.player.magicTree.loadMagicTree();
+                    }
                     String snapshot=snapshots.computeIfAbsent(s.player.zone,z->JSON.toJson(PlayerView.state(s.player,online,ticks)));
                     s.sendJson(snapshot,true);
                     if(ticks%20==0)s.send(PlayerView.stats(s.player));

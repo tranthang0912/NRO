@@ -3,55 +3,79 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#142b25">
+  <meta name="theme-color" content="#83cdec">
   <meta name="description" content="Ngọc Rồng dành cho hội bạn. Cùng khám phá thế giới ngay trên trình duyệt.">
   <title>Ngọc Rồng · Hội Bạn</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script src="/classic/scene.js" defer></script>
   <script src="/game.js" defer></script>
 </head>
 <body>
   <canvas id="world" aria-label="Bản đồ Ngọc Rồng. Di chuyển bằng WASD hoặc các nút cảm ứng."></canvas>
-  <div class="vignette"></div>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Ngọc Rồng Hội Bạn"><span class="dragonball">★★★★</span><span>NGỌC RỒNG<small>HỘI BẠN</small></span></a>
+    <a class="brand" href="/" aria-label="Ngọc Rồng"><img src="/classic/assets/logo/logo2.png" alt="Chú Bé Rồng Online"></a>
     <div class="server-state"><span id="connectionDot" class="dot"></span><span id="connectionText">Đang kết nối</span><b id="onlineCount">0/5</b></div>
     <button id="fullscreen" class="icon-button" title="Toàn màn hình" aria-label="Toàn màn hình">⛶</button>
   </header>
   <main>
     <section id="welcome" class="welcome">
-      <div class="intro"><span class="eyebrow">MỘT THẾ GIỚI · CÙNG HỘI BẠN</span><h1>Hành trình cũ.<br><em>Đồng đội mới.</em></h1><p>Từ ngôi làng nhỏ đến những hành tinh xa.<br>Gặp nhau, luyện tập và cùng trở nên mạnh hơn.</p><div class="intro-tags"><span>✦ 3 hành tinh</span><span>✦ Thế giới chung</span><span>✦ PC & điện thoại</span></div></div>
       <div class="login-card">
-        <div class="card-heading"><span class="eyebrow">CHÀO MỪNG TRỞ LẠI</span><h2>Bắt đầu hành trình</h2><p>Hẹn bạn bè cùng vào một bản đồ.</p></div>
+
         <div class="auth-tabs" role="tablist" aria-label="Tài khoản"><button id="loginTab" class="active" role="tab" aria-selected="true">Đăng nhập</button><button id="registerTab" role="tab" aria-selected="false">Tạo tài khoản</button></div>
         <form id="authForm">
           <label for="username">Tài khoản</label><input id="username" name="username" placeholder="Tên tài khoản của bạn" autocomplete="username" minlength="3" maxlength="20" pattern="[a-zA-Z0-9_]{3,20}" required>
           <label for="password">Mật khẩu</label><input id="password" name="password" type="password" placeholder="Tối thiểu 6 ký tự" autocomplete="current-password" minlength="6" maxlength="72" required>
           <div id="registerFields" hidden>
             <label for="characterName">Tên nhân vật</label><input id="characterName" placeholder="5–10 chữ cái hoặc chữ số" minlength="5" maxlength="10" pattern="[a-zA-Z0-9]{5,10}">
-            <label for="gender">Hành tinh</label><select id="gender"><option value="0">Trái Đất · Cân bằng & hồi phục</option><option value="1">Namek · Năng lượng & hỗ trợ</option><option value="2">Xayda · Sức mạnh & tấn công</option></select>
+            <label for="gender">Hành tinh</label><select id="gender"><option value="0">Trái Đất</option><option value="1">Namek</option><option value="2">Xayda</option></select>
             <div id="inviteField" hidden><label for="invite">Mã nhóm</label><input id="invite" placeholder="Mã do chủ máy chủ chia sẻ" maxlength="128"></div>
           </div>
           <p id="authError" class="form-error" role="alert"></p>
-          <button id="authSubmit" class="primary" type="submit">Vào thế giới <span>→</span></button>
+          <button id="authSubmit" class="primary" type="submit">Đăng nhập</button>
         </form>
-        <p class="card-footnote">Chơi trực tiếp trong trình duyệt.<br>Không cần tải hay cài đặt.</p>
       </div>
-      <footer class="welcome-footer"><span>NGỌC RỒNG · PHIÊN BẢN HỘI BẠN</span><span>Cuộc phiêu lưu bắt đầu từ một lời hẹn.</span></footer>
     </section>
     <section id="gameUI" hidden>
-      <div class="hud"><div class="player-avatar"><canvas id="avatar" width="58" height="58"></canvas></div><div class="hud-bars"><b id="playerName"></b><div class="bar"><span id="hpBar"></span><small id="hpText"></small></div><div class="bar mp"><span id="mpBar"></span><small id="mpText"></small></div><small id="powerText"></small></div></div>
-      <div id="mapName" class="map-label">Làng Aru <small>Khu 0</small></div>
-      <nav class="game-menu" aria-label="Menu game"><button data-panel="inventory" title="Hành trang [I]">▦ <span>Hành trang</span></button><button data-panel="character">✦ <span>Nhân vật</span></button><button data-panel="task">☷ <span>Nhiệm vụ</span></button><button data-panel="social">♧ <span>Đồng đội</span></button><button data-panel="help">? <span>Hướng dẫn</span></button></nav>
-      <div class="world-actions"><button id="rally">⌂ Về làng</button><button id="home">Về nhà</button><button id="logout">Thoát</button></div>
+      <div class="hud">
+        <button id="openPanel" type="button" aria-label="Mở hành trang" title="Hành trang [I]"><span id="playerName"></span></button>
+        <div class="hud-bars">
+          <div class="bar"><span id="hpBar"></span><small id="hpText"></small></div>
+          <div class="bar mp"><span id="mpBar"></span><small id="mpText"></small></div>
+        </div>
+        <small id="powerText"></small>
+      </div>
+      <div id="mapName" class="map-label"></div>
+      <button id="chatToggle" type="button" class="sprite chat-toggle" aria-label="Trò chuyện" title="Trò chuyện [Enter]"></button>
       <div id="target" class="target" hidden></div>
       <div id="context" class="context" hidden></div>
-      <div id="chat" class="chat"><div id="chatLog" aria-live="polite"></div><form id="chatForm"><input id="chatInput" placeholder="Enter để trò chuyện…" maxlength="120" autocomplete="off" aria-label="Tin nhắn"><button aria-label="Gửi tin nhắn">↵</button></form></div>
+      <div id="chat" class="chat" hidden><div id="chatLog" aria-live="polite"></div><form id="chatForm"><input id="chatInput" placeholder="Enter để trò chuyện…" maxlength="120" autocomplete="off" aria-label="Tin nhắn"><button aria-label="Gửi tin nhắn">↵</button></form></div>
       <div id="skills" class="skills" aria-label="Kỹ năng"></div>
       <div class="touch-controls" aria-label="Điều khiển cảm ứng"><div class="dpad"><button data-dir="up" aria-label="Bay lên">▲</button><button data-dir="left" aria-label="Sang trái">◀</button><button data-dir="down" aria-label="Xuống">▼</button><button data-dir="right" aria-label="Sang phải">▶</button></div><div class="touch-actions"><button id="touchInteract" aria-label="Tương tác">E</button><button id="touchJump" aria-label="Nhảy">↥</button><button id="touchAttack" aria-label="Tấn công">ĐÁNH</button><button id="touchPea" aria-label="Ăn đậu">ĐẬU</button></div></div>
       <button id="revive" class="revive" hidden>Hồi sinh tại chỗ</button>
-      <aside id="panel" class="panel" hidden><div class="panel-heading"><h2 id="panelTitle"></h2><button id="closePanel" aria-label="Đóng">×</button></div><div id="panelContent"></div></aside>
-      <dialog id="npcDialog"><form method="dialog"><button class="dialog-close" aria-label="Đóng">×</button></form><p id="npcText"></p><div id="npcChoices"></div></dialog>
+      <aside id="panel" class="panel" aria-label="Bảng nhân vật" hidden>
+        <header class="panel-heading">
+          <canvas id="avatar" width="48" height="48" aria-hidden="true"></canvas>
+          <div><h2 id="panelTitle"></h2><p id="panelPower"></p><p id="panelPotential"></p></div>
+          <button id="closePanel" class="sprite close-button" type="button" aria-label="Đóng bảng"></button>
+        </header>
+        <nav id="panelTabs" class="panel-tabs main-tabs" aria-label="Danh mục">
+          <button type="button" data-panel="task">Nhiệm vụ</button>
+          <button type="button" data-panel="inventory">Hành trang</button>
+          <button type="button" data-panel="character">Kỹ năng</button>
+          <button type="button" data-panel="social">Bang hội</button>
+          <button type="button" data-panel="help">Chức năng</button>
+        </nav>
+        <div id="panelContent"></div>
+        <footer id="wallet" class="wallet"></footer>
+      </aside>
+      <dialog id="npcDialog" aria-labelledby="npcText">
+        <div class="dialog-paper">
+          <form method="dialog"><button class="sprite close-button" aria-label="Đóng hộp thoại"></button></form>
+          <p id="npcText"></p>
+        </div>
+        <div id="npcChoices"></div>
+      </dialog>
     </section>
     <div id="toasts" class="toasts" aria-live="polite"></div>
     <div id="reconnect" class="reconnect" hidden><b>Đã ngắt kết nối</b><p id="reconnectText">Kiểm tra mạng rồi đăng nhập lại để tiếp tục.</p><button id="reconnectButton" class="primary">Kết nối lại</button></div>

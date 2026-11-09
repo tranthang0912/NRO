@@ -43,7 +43,7 @@ private static final ScheduledExecutorService scheduler = Executors.newScheduled
             dataArray.add(0); //event
             String inventory = dataArray.toJSONString();
             dataArray.clear();
-            dataArray.add(web.WebConfig.ENABLED ? web.WebConfig.START_MAP : 39 + gender); //map
+            dataArray.add(39 + gender); //map
             dataArray.add(100); //x
             dataArray.add(384); //y
             String location = dataArray.toJSONString();

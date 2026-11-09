@@ -5,7 +5,7 @@ Mở cùng một link HTTPS để chơi bằng trình duyệt trên máy tính, 
 ## Cấu hình cho nhóm 4–5 người
 
 - Một tiến trình game, **một instance Render**, tối đa 5 tài khoản cùng chơi. Người chơi trong cùng map/khu nhìn thấy nhau và dùng chung quái, vật phẩm rơi, chat.
-- Map thường có một khu chung. Bấm **Về làng** để cả nhóm tập hợp ở Làng Aru, khu 0. Nhà riêng và phó bản vẫn theo cơ chế của engine.
+- Map thường có một khu chung. Nhân vật mới bắt đầu ở vách núi theo hành tinh. Ví dụ với Trái Đất, đi sang phải từ Vách núi Aru vào Nhà Gôhan, rồi qua lối Làng Aru để gặp bạn bè ở khu 0. Khi đã đứng trong lối đi, bấm tên lối đi hoặc nhấn E.
 - Mô phỏng 20 nhịp/giây; gửi trạng thái 10 lần/giây, nội suy hình ảnh bằng `requestAnimationFrame`. Không tạo luồng TCP cho từng trình duyệt.
 - Gửi một bản trạng thái dùng chung cho mỗi khu. Giới hạn hàng đợi để máy mạng chậm không làm bộ nhớ tăng vô hạn.
 - PostgreSQL pool mặc định 3 kết nối, không vượt 6 khi cấu hình. Phù hợp giới hạn 20 kết nối trong thông tin Aiven đã cung cấp.
@@ -13,6 +13,12 @@ Mở cùng một link HTTPS để chơi bằng trình duyệt trên máy tính, 
 - Mất kết nối: giữ chỗ tối đa 45 giây và tự nối lại đúng nhân vật, đúng map. Vé kết nối lại được đổi sau mỗi lần dùng. Đóng tab lâu hơn thời gian này thì đăng nhập lại bằng mật khẩu.
 
 Không thể bảo đảm không ngắt kết nối khi mạng thiết bị mất hoàn toàn, dịch vụ bị tắt hoặc hết tài nguyên. Cơ chế nối lại xử lý gián đoạn ngắn; dữ liệu đã lưu nằm trong PostgreSQL.
+
+## Giao diện cổ điển
+
+Khung HP/KI, logo, nút, font pixel và sprite lấy từ tài nguyên gốc. Bảng nhân vật mở bằng tên ở góc trái hoặc phím I, có các tab nhiệm vụ, hành trang, kỹ năng, bang hội và chức năng. Hộp thoại NPC hiển thị lời thoại do server gửi.
+
+Các dải ô địa hình có sẵn được vẽ theo bố cục map gốc. Với những dải ô còn thiếu, trình duyệt dùng ô tương ứng từ bộ ảnh gốc có sẵn, nên một số cảnh và hoạt ảnh được tái dựng gần đúng.
 
 ## Gameplay và các phần được lược bỏ
 
@@ -53,7 +59,7 @@ Không nhập tài khoản, mật khẩu, admin, nhân vật hoặc lịch sử 
 
 4. Giữ **Instances = 1**, không bật autoscaling. Blueprint đã chọn `plan: free`, dùng PostgreSQL Aiven hiện có và không tạo tài nguyên trả phí. Free có chế độ ngủ khi không hoạt động, thời gian khởi động lại và các hạn mức. Xem [giới hạn Free](https://render.com/docs/free).
 
-5. Deploy. Khi log có `NRO Web ready on port ...`, `/healthz` trả HTTP 200 và Render báo Live, mở link `https://TEN_DICH_VU.onrender.com`. Chia sẻ **đúng cùng một link** cho cả nhóm. Mỗi người tạo một tài khoản khác nhau, vào game rồi bấm **Về làng**.
+5. Deploy. Khi log có `NRO Web ready on port ...`, `/healthz` trả HTTP 200 và Render báo Live, mở link `https://TEN_DICH_VU.onrender.com`. Chia sẻ **đúng cùng một link** cho cả nhóm. Mỗi người tạo một tài khoản khác nhau và đi đến cùng bản đồ, cùng khu.
 
 Render cấp HTTPS và chuyển WebSocket qua cùng cổng HTTP; ứng dụng đọc biến `PORT` của Render và lắng nghe `0.0.0.0`. Xem [WebSockets trên Render](https://render.com/docs/websocket) và [Blueprint](https://render.com/docs/blueprint-spec).
 

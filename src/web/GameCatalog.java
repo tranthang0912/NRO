@@ -44,10 +44,12 @@ final class GameCatalog {
         List<Object> portals = new ArrayList<>();
         for (int i=0;i<m.wayPoints.size();i++) {
             var wp=m.wayPoints.get(i);
-            portals.add(Map.of("index", i, "name", wp.name, "x", (wp.minX+wp.maxX)/2, "y", wp.maxY, "map", wp.goMap));
+            portals.add(Map.of("index", i, "name", wp.name, "x", (wp.minX+wp.maxX)/2, "y", wp.maxY, "map", wp.goMap,
+                "minX", wp.minX, "maxX", wp.maxX, "minY", wp.minY, "maxY", wp.maxY));
         }
         return Map.ofEntries(Map.entry("type", "map"), Map.entry("id", m.mapId), Map.entry("name", m.mapName),
             Map.entry("width", m.mapWidth), Map.entry("height", m.mapHeight), Map.entry("tileId", m.tileId), Map.entry("bgId", m.bgId),
+            Map.entry("bgType", m.bgType), Map.entry("planet", m.planetId),
             Map.entry("tiles", m.tileMap), Map.entry("top", m.tileTop), Map.entry("npcs", npcList), Map.entry("portals", portals),Map.entry("decorations",decorations));
     }
 }

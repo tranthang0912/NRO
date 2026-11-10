@@ -79,6 +79,9 @@ public final class WebSession extends MySession {
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(msg.getData()))) {
             switch (msg.command) {
                 case -25, -26 -> notice(in.readUTF());
+                case 40, 41, 43 -> {
+                    if (player != null && authenticated) send(PlayerView.taskMessage(player));
+                }
                 case 38 -> {
                     int npc = in.readShort();
                     String text = in.readUTF();

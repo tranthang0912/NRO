@@ -24,6 +24,17 @@ final class PlayerView {
         return out;
     }
     static Object inventory(Player p) { return Map.of("type","inventory","body", items(p.inventory.itemsBody),"bag",items(p.inventory.itemsBag),"box",items(p.inventory.itemsBox)); }
+    static Map<String, Object> task(Player player) {
+        var task = player.playerTask.taskMain;
+        if (task == null) return Map.of();
+        return Map.of("id", task.id, "name", Objects.toString(task.name, "Nhiệm vụ"),
+            "detail", Objects.toString(task.detail, ""), "index", task.index, "subtasks", task.subTasks);
+    }
+
+    static Object taskMessage(Player player) {
+        return Map.of("type", "task", "task", task(player));
+    }
+
     static Object stats(Player p) {
         List<Object> skills = new ArrayList<>();
         for(var s:p.playerSkill.skills) if (s.template != null) {
@@ -34,9 +45,7 @@ final class PlayerView {
         out.put("type", "stats"); out.put("hp",p.nPoint.hp);out.put("maxHp",p.nPoint.hpMax);out.put("mp",p.nPoint.mp);out.put("maxMp",p.nPoint.mpMax);
         out.put("power",p.nPoint.power);out.put("potential",p.nPoint.tiemNang);out.put("damage",p.nPoint.dame);out.put("defense",p.nPoint.def);out.put("crit",p.nPoint.crit);
         out.put("gold",p.inventory.gold);out.put("gem",p.inventory.gem);out.put("ruby",p.inventory.ruby);out.put("skills",skills);
-        if(p.playerTask.taskMain!=null) {
-            var t=p.playerTask.taskMain;out.put("task",Map.of("name",Objects.toString(t.name,"Nhiệm vụ"),"detail",Objects.toString(t.detail,""),"index",t.index,"subtasks",t.subTasks));
-        }
+        if (p.playerTask.taskMain != null) out.put("task", task(p));
         if(p.pet!=null) out.put("pet",actor(p.pet));
         if(p.clan!=null) out.put("clan",Map.of("id",p.clan.id,"name",p.clan.name));
         return out;
@@ -47,7 +56,7 @@ final class PlayerView {
         List<Object> mobs = new ArrayList<>();
         for(var m:p.zone.mobs) mobs.add(Map.of("id",m.id,"template",m.tempId,"name",GameCatalog.mobNames.getOrDefault(m.tempId,"Quái"),"x",m.location.x,"y",m.location.y,"hp",m.point.hp,"maxHp",m.point.maxHp,"dead",m.isDie()));
         List<Object> drops = new ArrayList<>();
-        for(var d:p.zone.items) if(d.itemTemplate!=null) drops.add(Map.of("id",d.itemMapId,"template",d.itemTemplate.id,"icon",d.itemTemplate.iconID,"x",d.x,"y",d.y));
+        for(var d:p.zone.getItemMapsForPlayer(p)) drops.add(Map.of("id",d.itemMapId,"template",d.itemTemplate.id,"icon",d.itemTemplate.iconID,"x",d.x,"y",d.y));
         return Map.of("type","state","time",System.currentTimeMillis(),"tick",tick,"map",p.zone.map.mapId,"zone",p.zone.zoneId,"online",online,"players",actors,"mobs",mobs,"drops",drops);
     }
 }

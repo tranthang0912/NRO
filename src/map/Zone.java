@@ -241,22 +241,29 @@ public class Zone {
     public List<ItemMap> getItemMapsForPlayer(Player player) {
         List<ItemMap> list = new ArrayList<>();
         for (ItemMap item : items) {
-            if (item.itemTemplate.id == 78) {
-                if (TaskService.gI().getIdTask(player) != ConstTask.TASK_3_1) {
-                    continue;
-                }
-            }
-            if (item.itemTemplate.id == 74) {
-                if (TaskService.gI().getIdTask(player) < ConstTask.TASK_3_0) {
-                    continue;
-                }
-            }
-            if (item.itemTemplate.id == 726 && item.playerId != player.id) {
-                continue;
-            }
-            list.add(item);
+            if (isItemVisibleTo(player, item)) list.add(item);
         }
         return list;
+    }
+
+    public boolean isItemVisibleTo(Player player, ItemMap item) {
+        if (item.itemTemplate == null) return false;
+        return switch (item.itemTemplate.id) {
+            case 74 -> TaskService.gI().getIdTask(player) >= ConstTask.TASK_3_0;
+            case 78 -> TaskService.gI().getIdTask(player) == ConstTask.TASK_3_1;
+            case 726 -> item.playerId == player.id;
+            default -> true;
+        };
+    }
+
+    public boolean hasPersonalItems() {
+        for (ItemMap item : items) {
+            if (item.itemTemplate != null) {
+                int id = item.itemTemplate.id;
+                if (id == 74 || id == 78 || id == 726) return true;
+            }
+        }
+        return false;
     }
 
     public Player getPlayerInMap(long idPlayer) {

@@ -113,7 +113,11 @@ input, select { display: block; width: 100%; min-height: 33px; border: 1px solid
 .item-detail { background: #f8eed8; padding: 5px; border: 1px solid #af976f; }
 .item-detail small { color: #2b5196; display: block; }
 .item-detail button, .panel-action { margin: 3px 3px 2px 0; }
-.task-current { color: #235e26; font-weight: bold; }
+#panelContent .task-sheet h3 { text-align: center; margin-bottom: 8px; }
+#panelContent .task-step { margin: 0; line-height: 1.5; }
+.task-step[aria-current=step] { color: #22569f; }
+.task-complete { color: #716b5b; }
+#panelContent .task-detail { margin-top: 8px; white-space: pre-line; }
 
 dialog {
   position: fixed; inset: auto 0 clamp(9px, 7vh, 60px); margin: 0 auto;

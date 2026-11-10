@@ -5,6 +5,7 @@
   const images = new Map(), actors = new Map(), effects = [], bubbles = new Map();
   let socket, joined = false, register = false, catalog = { parts: {}, npcs: {}, items: {} };
   let tree = null, map = null, state = null, stats = null, inventory = null, ownId = 0, selected = null, selectedSkill = 0;
+  let task = null;
   let currentPanel = '', bagTab = 'bag', itemSelection = -1, lastFrame = performance.now(), frameTime = 0;
   let width = 960, height = 540, cameraX = 0, cameraY = 0, scale = 2, heartbeat, inputTimer, loginTimer;
   let reconnectTimer, retryCount = 0, intentionalDisconnect = false;
@@ -69,7 +70,7 @@
       case 'resumeFailed':
         sessionStorage.removeItem('nro-resume');joined=false;
         $('gameUI').hidden=true;$('welcome').hidden=false;$('reconnect').hidden=true;
-        document.body.classList.remove('playing');state=map=null;actors.clear();
+        document.body.classList.remove('playing');state=map=task=null;actors.clear();
         $('authError').textContent='Phiên cũ đã kết thúc. Đăng nhập lại để tiếp tục nhân vật đã lưu.';
         break;
       case 'notice':
@@ -95,8 +96,10 @@
       case 'stats':
         const previousStats = stats;
         stats = data; updateHUD(); updateSkills();
-        const key = { character: 'potential', task: 'task', social: 'clan' }[currentPanel];
+        updateTask(data.task);
+        const key = { character: 'potential', social: 'clan' }[currentPanel];
         if (key && JSON.stringify(previousStats?.[key]) !== JSON.stringify(data[key])) renderPanel(); break;
+      case 'task': updateTask(data.task); break;
       case 'openBox': bagTab = 'box'; togglePanel('inventory'); renderPanel(); break;
       case 'inventory': inventory = data; if (currentPanel === 'inventory') renderPanel(); break;
       case 'chat': {
@@ -135,6 +138,11 @@
     }
   }
   const clean = text => String(text ?? '').replace(/\|\d+\|/g, '').replace(/\b(?:https?:\/\/)?(?:nro1999\.online|nroblackgoku\.click)\S*/gi, '');
+  function updateTask(next) {
+    const changed = currentPanel === 'task' && JSON.stringify(task) !== JSON.stringify(next);
+    task = next;
+    if (changed) renderPanel();
+  }
   function updateHUD() {
     if (!stats) return;
     $('hpBar').style.width = `${Math.max(0, Math.min(100, stats.hp / Math.max(1, stats.maxHp) * 100))}%`;
@@ -241,10 +249,21 @@
       stats?.skills.forEach(s => root.append(statRow(s.name, s.level > 0 ? `Cấp ${s.level}` : 'Chưa học')));
       root.append(element('p', 'Gặp sư phụ trên hành tinh của bạn để học và nâng cấp kỹ năng.'));
     } else if (currentPanel === 'task') {
-      const t = stats?.task;
-      if (!t) { root.append(element('p', 'Gặp NPC trong làng để nhận nhiệm vụ.')); return; }
-      root.append(element('h3', t.name), element('p', clean(t.detail)));
-      t.subtasks?.forEach((sub, index) => { const line = element('p', `${index < t.index ? '✓' : index === t.index ? '→' : '·'} ${sub.name}${sub.maxCount > 0 ? ` (${sub.count}/${sub.maxCount})` : ''}`); if (index === t.index) line.classList.add('task-current'); root.append(line); });
+      if (!task?.name) { root.append(element('p', 'Hiện tại không có nhiệm vụ nào')); return; }
+      const quest = element('section', undefined, 'task-sheet');
+      quest.append(element('h3', task.name));
+      task.subtasks.forEach((step, index) => {
+        const current = index === task.index;
+        const complete = index < task.index;
+        const count = complete ? step.maxCount : current ? step.count : 0;
+        const progress = step.maxCount > 1 ? ` (${count}/${step.maxCount})` : '';
+        const line = element('p', `- ${clean(step.name)}${progress}`, 'task-step');
+        if (current) line.setAttribute('aria-current', 'step');
+        if (complete) line.classList.add('task-complete');
+        quest.append(line);
+      });
+      quest.append(element('p', clean(task.detail), 'task-detail'));
+      root.append(quest);
     } else if (currentPanel === 'social') {
       root.append(element('h3', `Cùng bản đồ · ${state?.players.filter(p => !p.boss).length || 0} người`));
       state?.players.filter(p => !p.boss).forEach(p => root.append(statRow(`${p.id === ownId ? '● ' : '○ '}${p.name}`, `HP ${number(p.hp)}`,p.id!==ownId?button('Giao dịch',()=>send({type:'trade',action:0,peer:p.id}),'panel-action'):null)));
@@ -550,7 +569,7 @@
   });
   $('closePanel').addEventListener('click', closePanel);
   $('revive').addEventListener('click', () => send({ type: 'revive' }));
-  function logout() {intentionalDisconnect=true;sessionStorage.removeItem('nro-resume');clearTimeout(reconnectTimer);send({ type: 'logout' }); joined = false; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = stats = null; actors.clear(); closePanel(); $('chat').hidden = true; setTimeout(connect, 300); }
+  function logout() {intentionalDisconnect=true;sessionStorage.removeItem('nro-resume');clearTimeout(reconnectTimer);send({ type: 'logout' }); joined = false; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = stats = task = null; actors.clear(); closePanel(); $('chat').hidden = true; setTimeout(connect, 300); }
   $('reconnectButton').addEventListener('click', () => { $('reconnect').hidden = true; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = null; actors.clear(); connect(); });
   $('fullscreen').addEventListener('click', () => { const operation = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); operation?.catch(() => toast('Trình duyệt chưa hỗ trợ toàn màn hình.')); });
   function authTab(value) { register = value; $('registerFields').hidden = !value; $('characterName').required = value; $('password').autocomplete = value ? 'new-password' : 'current-password'; $('loginTab').classList.toggle('active', !value); $('registerTab').classList.toggle('active', value); $('loginTab').setAttribute('aria-selected', !value); $('registerTab').setAttribute('aria-selected', value); $('authError').textContent = ''; authReady(); }

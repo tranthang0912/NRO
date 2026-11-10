@@ -106,6 +106,7 @@ public final class GameWorld implements AutoCloseable {
                 if(p.zone.map.getNpc(p,id)==null)throw new IllegalArgumentException("Hãy đến gần NPC.");
                 MenuController.gI().openMenuNPC(s,id,p);
                 if(id==consts.ConstNpc.RUONG_DO&&MapService.gI().isHome(p.zone.map.mapId)){
+                    restoreChestObjective(p);
                     s.send(PlayerView.inventory(p));
                     s.send(Map.of("type","openBox"));
                 }
@@ -127,7 +128,21 @@ public final class GameWorld implements AutoCloseable {
             case "store" -> {
                 requireBox(p);InventoryService.gI().itemBagToBox(p,bounded(d,"index",0,p.inventory.itemsBag.size()-1));s.send(PlayerView.inventory(p));
             }
-            case "withdraw" -> {requireBox(p);InventoryService.gI().itemBoxToBodyOrBag(p,bounded(d,"index",0,p.inventory.itemsBox.size()-1));s.send(PlayerView.inventory(p));}
+            case "withdraw" -> {
+                requireBox(p);
+                int index = bounded(d, "index", 0, p.inventory.itemsBox.size() - 1);
+                if (!p.inventory.itemsBox.get(index).isNotNullItem()) {
+                    throw new IllegalArgumentException("Ô rương trống.");
+                }
+                // The original transfer handler also advances the tutorial's chest objective.
+                try (var msg = packet(-40, out -> {
+                    out.writeByte(0); // Box to body or bag.
+                    out.writeByte(index);
+                })) {
+                    UseItem.gI().getItem(s, msg.message);
+                }
+                s.send(PlayerView.inventory(p));
+            }
             case "use" -> {
                 int i=bounded(d,"index",0,p.inventory.itemsBag.size()-1);
                 try(var msg=packet(-43,out->{out.writeByte(0);out.writeByte(1);out.writeByte(i);})) {UseItem.gI().doItem(p,msg.message);}
@@ -140,7 +155,11 @@ public final class GameWorld implements AutoCloseable {
             }
             case "pickup" -> {
                 int id=bounded(d,"id",0,32767);var item=p.zone.getItemMapByItemMapId(id);
-                if(item!=null&&distance(p.location.x,p.location.y,item.x,item.y)<=90){ItemMapService.gI().pickItem(p,id,false);s.send(PlayerView.inventory(p));}
+                if (item != null && p.zone.isItemVisibleTo(p, item)
+                    && distance(p.location.x, p.location.y, item.x, item.y) <= 90) {
+                    ItemMapService.gI().pickItem(p, id, false);
+                    s.send(PlayerView.inventory(p));
+                }
             }
             case "pea" -> UseItem.gI().eatPea(p);
             case "revive" -> PlayerService.gI().hoiSinh(p);
@@ -276,6 +295,7 @@ public final class GameWorld implements AutoCloseable {
         s.resumeToken=java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(token);
         resumeTokens.put(s.resumeToken,s);
         s.send(Map.of("type","joined","id",s.player.id,"name",s.player.name,"maxPlayers",WebConfig.MAX_PLAYERS,"token",s.resumeToken));
+        s.send(PlayerView.taskMessage(s.player));
     }
     private void resume(WebSession s,String token) {
         if(s.authenticated)return;
@@ -289,6 +309,18 @@ public final class GameWorld implements AutoCloseable {
         joined(s);s.send(PlayerView.inventory(s.player));s.send(PlayerView.stats(s.player));
         s.notice("Đã kết nối lại, tiếp tục hành trình!");
     }
+    private void restoreChestObjective(Player player) {
+        var tasks = TaskService.gI();
+        if (tasks.getIdTask(player) != consts.ConstTask.TASK_0_3) return;
+
+        // Every starter chest contains this radar until it is withdrawn. Older web clients
+        // could transfer it without notifying TaskService, and it may have been sold since.
+        final int starterRadar = 12;
+        if (InventoryService.gI().findItem(player.inventory.itemsBox, starterRadar) == null) {
+            tasks.checkDoneTaskGetItemBox(player);
+        }
+    }
+
     private void requireBox(Player p) { if(!MapService.gI().isHome(p.zone.map.mapId))throw new IllegalArgumentException("Hãy về nhà để sử dụng rương."); }
     private void portal(WebSession s,int index) {
         Player p=s.player;var wp=p.zone.map.wayPoints.get(index);
@@ -365,7 +397,9 @@ public final class GameWorld implements AutoCloseable {
                         s.send(GameCatalog.map(s.player.zone.map));
                         if(MapService.gI().isHome(s.sentMap)&&s.player.magicTree!=null)s.player.magicTree.loadMagicTree();
                     }
-                    String snapshot=snapshots.computeIfAbsent(s.player.zone,z->JSON.toJson(PlayerView.state(s.player,online,ticks)));
+                    String snapshot = s.player.zone.hasPersonalItems()
+                        ? JSON.toJson(PlayerView.state(s.player, online, ticks))
+                        : snapshots.computeIfAbsent(s.player.zone, z -> JSON.toJson(PlayerView.state(s.player, online, ticks)));
                     s.sendJson(snapshot,true);
                     if(ticks%20==0)s.send(PlayerView.stats(s.player));
                 }

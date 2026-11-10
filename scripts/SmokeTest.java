@@ -23,6 +23,13 @@ public class SmokeTest {
         return state.getAsJsonArray("players").asList().stream().map(JsonElement::getAsJsonObject)
             .filter(player->player.get("id").getAsLong()==id).findFirst().orElseThrow();
     }
+    static JsonObject expectTask(Bot bot, int id, int index) throws Exception {
+        JsonObject task = bot.waitFor("task", 5).getAsJsonObject("task");
+        if (task.get("id").getAsInt() != id || task.get("index").getAsInt() != index) {
+            throw new AssertionError("Wrong task or objective: " + task);
+        }
+        return task;
+    }
     static JsonObject walkThrough(Bot bot,long id,JsonObject map,int destination)throws Exception {
         JsonObject portal=map.getAsJsonArray("portals").asList().stream().map(JsonElement::getAsJsonObject)
             .filter(entry->entry.get("map").getAsInt()==destination).findFirst().orElseThrow();
@@ -60,6 +67,11 @@ public class SmokeTest {
                 if(start.get("id").getAsInt()!=39)throw new AssertionError("Incorrect Earth starting map");
                 JsonObject home=walkThrough(b,id,start,21);
                 if(i==0) {
+                    var homeState = b.waitFor("state", 5);
+                    if (homeState.getAsJsonArray("drops").asList().stream()
+                        .anyMatch(drop -> drop.getAsJsonObject().get("template").getAsInt() == 74)) {
+                        throw new AssertionError("The quest-only food appeared before the required objective");
+                    }
                     b.send(Map.of("type","move","x",1,"y",0,"jump",false));
                     long walkEnd=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
                     while(ownPlayer(b.waitFor("state",5),id).get("x").getAsInt()<200) {
@@ -67,8 +79,17 @@ public class SmokeTest {
                     }
                     b.send(Map.of("type","move","x",0,"y",0,"jump",false));
                     b.send(Map.of("type","npc","id",0));
+                    expectTask(b, 0, 3);
                     var tutorial=b.waitFor("tutorial",5);
                     if(!tutorial.get("text").getAsString().contains("rađa"))throw new AssertionError("Missing original NPC quest dialogue");
+                    b.send(Map.of("type", "inventory"));
+                    JsonObject items = b.waitFor("inventory", 5);
+                    int radar = items.getAsJsonArray("box").asList().stream().map(JsonElement::getAsJsonObject)
+                        .filter(item -> item.get("id").getAsInt() == 12)
+                        .findFirst().orElseThrow().get("index").getAsInt();
+                    b.send(Map.of("type", "withdraw", "index", radar));
+                    expectTask(b, 0, 4);
+                    b.waitFor("inventory", 5);
                     b.send(Map.of("type","move","x",1,"y",0,"jump",false));
                     long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
                     int x=0;
@@ -81,8 +102,18 @@ public class SmokeTest {
                     var treeMenu=b.waitFor("menu",5);
                     if(treeMenu.get("npc").getAsInt()!=4)throw new AssertionError("Wrong tree menu");
                     b.send(Map.of("type","menu","id",4,"choice",0));
+                    expectTask(b, 0, 5);
                     if(b.waitFor("treeHarvest",5).get("peas").getAsInt()!=0)throw new AssertionError("Beans were not harvested");
-                    System.out.println("PASS: Original home, NPC quest dialogue and bean harvest.");
+                    b.send(Map.of("type", "move", "x", -1, "y", 0, "jump", false));
+                    long returnEnd = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    while (ownPlayer(b.waitFor("state", 5), id).get("x").getAsInt() > 225) {
+                        if (System.nanoTime() > returnEnd) throw new AssertionError("Cannot return to Gohan");
+                    }
+                    b.send(Map.of("type", "move", "x", 0, "y", 0, "jump", false));
+                    b.send(Map.of("type","npc","id",0));
+                    expectTask(b, 1, 0);
+                    b.waitFor("tutorial",5);
+                    System.out.println("PASS: Original tutorial, chest radar, bean harvest and transition to training quest.");
                 }
                 walkThrough(b,id,home,0);
             }
@@ -127,7 +158,20 @@ public class SmokeTest {
                 first.send(Map.of("type","move","x",0,"y",0,"jump",false));first.queue.clear();var st=first.waitFor("state",3);var target=st.getAsJsonArray("mobs").asList().stream().map(JsonElement::getAsJsonObject).filter(m->m.get("id").getAsInt()==mobId).findFirst().orElseThrow();long hp=target.get("hp").getAsLong();
                 first.send(Map.of("type","attack","mob",mobId,"skill",0));long hitEnd=System.nanoTime()+TimeUnit.SECONDS.toNanos(4);boolean hit=false;
                 while(System.nanoTime()<hitEnd){var next=first.waitFor("state",3);var m=next.getAsJsonArray("mobs").asList().stream().map(JsonElement::getAsJsonObject).filter(v->v.get("id").getAsInt()==mobId).findFirst().orElseThrow();if(m.get("hp").getAsLong()<hp){hit=true;break;}}
-                if(!hit)throw new AssertionError("Attack did not reduce mob HP");System.out.println("PASS: Existing skill engine damages a live mob in the shared map.");
+                if (!hit) throw new AssertionError("Attack did not reduce mob HP");
+                // The training objective must advance when the original wooden dummy dies.
+                JsonObject progress = null;
+                for (int attempt = 0; attempt < 20 && progress == null; attempt++) {
+                    Thread.sleep(550);
+                    first.send(Map.of("type", "attack", "mob", mobId, "skill", 0));
+                    progress = first.history.stream().filter(j -> j.get("type").getAsString().equals("task"))
+                        .map(j -> j.getAsJsonObject("task"))
+                        .filter(t -> t.get("id").getAsInt() == 1 && t.get("index").getAsInt() == 0
+                            && t.getAsJsonArray("subtasks").get(0).getAsJsonObject().get("count").getAsInt() == 1)
+                        .findFirst().orElse(null);
+                }
+                if (progress == null) throw new AssertionError("Killing a wooden dummy did not advance training");
+                System.out.println("PASS: Defeating a wooden dummy advances the original training objective to 1/5.");
             }else throw new AssertionError("No village mobs loaded");
             first.queue.clear();first.send(Map.of("type","inventory"));var inv=first.waitFor("inventory",5);if(inv.getAsJsonArray("body").isEmpty())throw new AssertionError("missing equipment");
             first.waitFor("stats",5);

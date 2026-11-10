@@ -14,6 +14,7 @@ import map.Service.MapService;
 import map.WayPoint;
 import map.Zone;
 import mob.Mob;
+import npc.list.Whis;
 import player.Player;
 import player.Service.InventoryService;
 import server.MenuController;
@@ -32,10 +33,12 @@ final class WebAutomation {
     private enum Mode { OFF, QUEST, FARM }
     private record Leg(WayPoint portal, WebQuestTransit.Trip trip) {}
     private record Route(map.Map map, Leg first) {}
+    private record StudyTrip(WebQuestStudy.Mentor mentor, WebQuestStudy.Lesson lesson, long deadline) {}
     private static final Predicate<Mob> ANY_MOB = mob -> true;
     private static final long QUEST_TIMEOUT_MS = 90000;
     private final WebSession session;
     private final WebCombatTarget targets = new WebCombatTarget();
+    private final WebQuestCombat questCombat = new WebQuestCombat();
     private final Map<WayPoint, Long> blockedExits = new IdentityHashMap<>();
     private Mode mode = Mode.OFF;
     private String waiting = "";
@@ -49,6 +52,9 @@ final class WebAutomation {
     private long retryActionAt;
     private long reviveAt;
     private long retryDamageTrainingAt;
+    private long retryStudyAt;
+    private long potentialForSkill;
+    private StudyTrip studyTrip;
     private int objective = -1;
     private int objectiveCount = -1;
     private long objectivePower;
@@ -84,6 +90,7 @@ final class WebAutomation {
             return;
         }
         resetMotion();
+        questCombat.reset(player);
         mode = requested;
         farmZone = requested == Mode.FARM ? player.zone : null;
         previousZone = null;
@@ -91,6 +98,8 @@ final class WebAutomation {
         transitStarted = 0;
         objective = objectiveCount = -1;
         lastBossSearch = retryRouteAt = retryActionAt = reviveAt = retryDamageTrainingAt = 0;
+        retryStudyAt = potentialForSkill = 0;
+        studyTrip = null;
         lastProgress = System.currentTimeMillis();
         waiting = "";
         recovering = false;
@@ -102,6 +111,7 @@ final class WebAutomation {
 
     void restore(WebAutomation old) {
         if (!old.active()) return;
+        old.questCombat.reset(session.player);
         mode = old.mode;
         farmZone = old.farmZone;
         recovering = old.recovering;
@@ -118,6 +128,7 @@ final class WebAutomation {
 
     void stop(String reason) {
         if (active()) resetMotion();
+        questCombat.reset(session.player);
         mode = Mode.OFF;
         farmZone = previousZone = null;
         nextLeg = null;
@@ -163,6 +174,7 @@ final class WebAutomation {
         session.direction = session.vertical = 0;
         session.jump = false;
         if (player.isDie()) {
+            questCombat.reset(player);
             if (mode == Mode.FARM) stop("Auto đánh đã dừng vì nhân vật ngã gục trong khu treo.");
             else reviveForQuest(player);
             return;
@@ -171,6 +183,7 @@ final class WebAutomation {
         if (combatZone != player.zone) {
             combatZone = player.zone;
             targets.clear();
+            questCombat.reset(player);
         }
         if (player.newSkill.isStartSkillSpecial || player.effectSkill.isHaveEffectSkill()) return;
         try {
@@ -229,6 +242,7 @@ final class WebAutomation {
         }
         var step = task.subTasks.get(task.index);
         int id = TaskService.gI().getIdTask(player);
+        if (id != objective) questCombat.reset(player);
         if (player.zone != previousZone || id != objective || step.count != objectiveCount) {
             previousZone = player.zone;
             nextLeg = null;
@@ -263,6 +277,7 @@ final class WebAutomation {
             }
             return;
         }
+        if (id > TASK_3_0 && !WebMabuQuest.applies(id) && studySkills(player, now)) return;
         if (id == TASK_13_0) {
             if (WebQuestActions.checkClan(player)) { resumeWork(); return; }
             if (now >= retryActionAt) {
@@ -334,6 +349,72 @@ final class WebAutomation {
         } else {
             waitFor("Auto NV đang chờ điều kiện của bước hiện tại trong tab Nhiệm vụ.");
         }
+    }
+
+    private boolean studySkills(Player player, long now) throws Exception {
+        if (player.zone.map.mapId == 154) {
+            for (var npc : player.zone.map.npcs) {
+                if (!(npc instanceof Whis whis) || !whis.canLearnFirstSpecial(player)) continue;
+                if (player.zone.map.getNpc(player, ConstNpc.WHIS) == null) {
+                    aim(player, npc.cx, npc.cy, 14, 24);
+                    return true;
+                }
+                if (whis.learnFirstSpecial(player)) {
+                    session.send(PlayerView.inventory(player));
+                    session.send(PlayerView.stats(player));
+                }
+                return true;
+            }
+        }
+        if (studyTrip != null && now >= studyTrip.deadline()) {
+            studyTrip = null;
+            nextLeg = null;
+            potentialForSkill = 0;
+            retryStudyAt = now + 60_000;
+        }
+        if (studyTrip == null && now >= retryStudyAt) {
+            retryStudyAt = now + 3_000;
+            potentialForSkill = 0;
+            long studyTime = player.LearnSkill.Time;
+            if (studyTime > now) return false;
+            if (studyTime == -1 && WebQuestStudy.learnFromBag(session)) {
+                session.send(PlayerView.inventory(player));
+                session.send(PlayerView.stats(player));
+                return true;
+            }
+            var lesson = studyTime == -1 ? WebQuestStudy.nextLesson(player) : null;
+            if (studyTime == -1 && lesson == null) return false;
+            var mentor = WebQuestStudy.mentor(player);
+            boolean alreadyThere = player.zone.map.mapId == mentor.map();
+            Leg first = alreadyThere ? null : findRoute(player, map -> map.mapId == mentor.map());
+            if (!alreadyThere && first == null) return false;
+            potentialForSkill = lesson == null ? 0 : lesson.potential();
+            if (player.nPoint.tiemNang >= potentialForSkill) {
+                studyTrip = new StudyTrip(mentor, lesson, now + 120_000);
+                questCombat.reset(player);
+                nextLeg = first;
+                retryRouteAt = 0;
+                lastProgress = now;
+                if (!alreadyThere) session.notice("Auto NV đang đến gặp sư phụ để học kỹ năng.");
+            }
+        }
+        if (studyTrip == null) return false;
+        var mentor = studyTrip.mentor();
+        if (!atMap(player, mentor.map())) return true;
+        var npc = player.zone.map.getNpc(player, mentor.npc());
+        if (npc == null) { approachNpc(player, mentor.npc()); return true; }
+        var lesson = studyTrip.lesson();
+        boolean completed = lesson == null ? WebQuestStudy.finish(session, npc, now) : WebQuestStudy.start(session, lesson);
+        studyTrip = null;
+        nextLeg = null;
+        potentialForSkill = 0;
+        retryStudyAt = now + (completed ? 3_000 : 30_000);
+        if (completed) {
+            resumeWork();
+            session.send(PlayerView.stats(player));
+            if (lesson == null) session.notice("Auto NV đã nhận kỹ năng đã học từ sư phụ.");
+        }
+        return true;
     }
 
     boolean readyForClanPair() {
@@ -529,7 +610,10 @@ final class WebAutomation {
         collectNearbyLoot(player);
         Mob target = targets.select(player, matches, mob -> session.world.mobClaimedByAnother(session, mob), System.currentTimeMillis());
         if (target != null) strike(player, null, target, target.location.x, target.location.y);
-        else waitFor("Đang chờ quái phù hợp xuất hiện hoặc tìm đường tới mục tiêu khác.");
+        else {
+            questCombat.reset(player);
+            waitFor("Đang chờ quái phù hợp xuất hiện hoặc tìm đường tới mục tiêu khác.");
+        }
     }
 
     private void collectNearbyLoot(Player player) {
@@ -549,6 +633,7 @@ final class WebAutomation {
         if (fightQuestBossInZone(player, id, boss)) return;
         int trigger = WebQuestTargets.bossTrigger(id);
         if (trigger != 0 && fightQuestBossInZone(player, id, trigger)) return;
+        questCombat.reset(player);
         long now = System.currentTimeMillis();
         if (now - lastBossSearch >= 2_000) {
             lastBossSearch = now;
@@ -571,7 +656,10 @@ final class WebAutomation {
                     long hp = target.nPoint.hp;
                     strike(player, target, null, target.location.x, target.location.y);
                     if (target.nPoint != null && target.nPoint.hp < hp) lastProgress = System.currentTimeMillis();
-                } else waitFor("Auto NV đang chờ boss có thể giao chiến.");
+                } else {
+                    questCombat.reset(player);
+                    waitFor("Auto NV đang chờ boss có thể giao chiến.");
+                }
                 return true;
             }
         }
@@ -580,28 +668,39 @@ final class WebAutomation {
 
     private void strike(Player player, Player target, Mob mob, int x, int y) {
         int skillId = switch (player.gender) { case 0 -> Skill.DRAGON; case 1 -> Skill.DEMON; default -> Skill.GALICK; };
-        Skill skill = player.playerSkill.getSkillbyId(skillId);
-        if (skill == null || skill.point <= 0) {
+        Skill basic = player.playerSkill.getSkillbyId(skillId);
+        if (basic == null || basic.point <= 0) {
             stop("Nhân vật cần học đòn cơ bản để Auto đánh.");
             return;
         }
-        player.playerSkill.skillSelect = skill;
-        boolean questBasicAttack = mode == Mode.QUEST;
-        if (questBasicAttack) {
+        Skill skill = basic;
+        double distance = distance(player, x, y);
+        boolean quest = mode == Mode.QUEST;
+        if (quest) {
             if (player.nPoint.stamina <= 0) { waitFor("Auto NV đang chờ hồi thể lực."); return; }
             long now = System.currentTimeMillis();
             if (objective > TASK_3_0 && objective != TASK_27_0 && now >= retryDamageTrainingAt) {
                 retryDamageTrainingAt = now + 1_000;
-                WebQuestActions.trainDamage(player.nPoint, player.nPoint.getDameLimit());
+                WebQuestActions.trainDamage(player.nPoint, player.nPoint.getDameLimit(), potentialForSkill);
             }
-        } else if (!readyForCombat(player)) {
-            if (player.nPoint.hp <= player.nPoint.hpMax / 4) retreat(player, target);
-            return;
+            skill = questCombat.select(player, target, mob, basic, distance);
+            if (skill == null) return;
+            if (skill.template.type == 3 || WebQuestCombat.selfHeal(skill)) {
+                resumeWork();
+                session.world.attack(session, skill, WebQuestCombat.selfHeal(skill) ? player : null, null, false);
+                return;
+            }
+        } else {
+            player.playerSkill.skillSelect = basic;
+            if (!readyForCombat(player)) {
+                if (player.nPoint.hp <= player.nPoint.hpMax / 4) retreat(player, target);
+                return;
+            }
         }
         resumeWork();
-        if (distance(player, x, y) > 78) { aim(player, x, y, 32, 42); return; }
+        if (distance > (skill == basic ? 78 : WebQuestCombat.range(skill))) { aim(player, x, y, 32, 42); return; }
         session.facing = x < player.location.x ? -1 : 1;
-        session.world.attack(session, skill, target, mob, questBasicAttack);
+        session.world.attack(session, skill, target, mob, quest && skill == basic);
     }
 
     private boolean readyForCombat(Player player) {

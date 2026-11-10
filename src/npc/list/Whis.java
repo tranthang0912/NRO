@@ -20,6 +20,10 @@ import utils.Util;
 public class Whis extends Npc {
 
     private static final int COST_HD = 50000000;
+    private static final long SPECIAL_POWER = 60_000_000_000L;
+    private static final int SPECIAL_GOLD = 10_000_000;
+    private static final int SPECIAL_GEM = 99;
+    private static final int FIRST_SPECIAL_BOOKS = 9_999;
 
     public Whis(int mapId, int status, int cx, int cy, int tempId, int avartar) {
         super(mapId, status, cx, cy, tempId, avartar);
@@ -84,15 +88,10 @@ public class Whis extends Npc {
     }
 
     private void openLearnSkillMenu(Player player, Item Biky) {
-        int idSkill = switch (player.gender) {
-            case 0 -> Skill.SUPER_KAME;
-            case 1 -> Skill.MA_PHONG_BA;
-            case 2 -> Skill.LIEN_HOAN_CHUONG;
-            default -> Skill.MA_PHONG_BA;
-        };
+        int idSkill = specialSkillId(player);
         Skill currentSkill = SkillUtil.getSkillbyId(player, idSkill);
         boolean firstLearn = currentSkill == null || currentSkill.point == 0;
-        int BikyRequire = firstLearn ? 9999 : 999; // Điều kiện yêu cầu bí kíp
+        int BikyRequire = firstLearn ? FIRST_SPECIAL_BOOKS : 999;
         int skillLevel = firstLearn ? 1 : currentSkill.point + 1;
         if (getSpecialSkillLevel(idSkill, skillLevel) == null) {
             Service.gI().sendThongBao(player, "Kỹ năng đã đạt tối đa!");
@@ -113,29 +112,47 @@ public class Whis extends Npc {
                 "Đồng ý", "Từ chối");
     }
 
+    public boolean canLearnFirstSpecial(Player player) {
+        Skill skill = SkillUtil.getSkillbyId(player, specialSkillId(player));
+        if (mapId != 154 || (skill != null && skill.point > 0) || player.nPoint.power < SPECIAL_POWER
+                || player.inventory.gold < SPECIAL_GOLD || player.inventory.gem <= SPECIAL_GEM) return false;
+        Item books = InventoryService.gI().findItemBag(player, 1229);
+        return books != null && books.quantity >= FIRST_SPECIAL_BOOKS;
+    }
+
+    public boolean learnFirstSpecial(Player player) {
+        if (!canLearnFirstSpecial(player) || !canOpenNpc(player)) return false;
+        confirmLearnSkill(player);
+        Skill skill = SkillUtil.getSkillbyId(player, specialSkillId(player));
+        return skill != null && skill.point > 0;
+    }
+
+    private static int specialSkillId(Player player) {
+        return switch (player.gender) {
+            case 0 -> Skill.SUPER_KAME;
+            case 2 -> Skill.LIEN_HOAN_CHUONG;
+            default -> Skill.MA_PHONG_BA;
+        };
+    }
+
     private void confirmLearnSkill(Player player) {
         Item Biky = InventoryService.gI().findItemBag(player, 1229);
         if (Biky == null) return;
 
-        if (player.nPoint.power < 60000000000L) {
+        if (player.nPoint.power < SPECIAL_POWER) {
             Service.gI().sendThongBao(player, "Ngươi không đủ sức mạnh để học tuyệt kỹ");
             return;
         }
-        if (player.inventory.gold < 10000000) {
+        if (player.inventory.gold < SPECIAL_GOLD) {
             Service.gI().sendThongBao(player, "Hãy có đủ vàng thì quay lại gặp ta.");
             return;
         }
-        if (player.inventory.gem <= 99) {
+        if (player.inventory.gem <= SPECIAL_GEM) {
             Service.gI().sendThongBao(player, "Hãy có đủ ngọc xanh thì quay lại gặp ta.");
             return;
         }
 
-        int idSkill = switch (player.gender) {
-            case 0 -> Skill.SUPER_KAME;
-            case 1 -> Skill.MA_PHONG_BA;
-            case 2 -> Skill.LIEN_HOAN_CHUONG;
-            default -> Skill.MA_PHONG_BA;
-        };
+        int idSkill = specialSkillId(player);
         Skill currentSkill = SkillUtil.getSkillbyId(player, idSkill);
         boolean firstLearn = currentSkill == null || currentSkill.point == 0;
         Skill nextSkill = getSpecialSkillLevel(idSkill, firstLearn ? 1 : currentSkill.point + 1);
@@ -143,7 +160,7 @@ public class Whis extends Npc {
             Service.gI().sendThongBao(player, "Kỹ năng đã đạt tối đa!");
             return;
         }
-        int BikyRequire = firstLearn ? 9999 : 999;
+        int BikyRequire = firstLearn ? FIRST_SPECIAL_BOOKS : 999;
 
         if (Biky.quantity < BikyRequire) {
             Service.gI().sendThongBao(player, "Ngươi còn thiếu " + (BikyRequire - Biky.quantity) + " bí kíp nữa.\nHãy tìm đủ rồi đến gặp ta.");
@@ -202,8 +219,8 @@ public class Whis extends Npc {
             Service.gI().sendThongBao(player, msg);
 
             InventoryService.gI().subQuantityItemsBag(player, Biky, trubk);
-            player.inventory.gold -= 10000000;
-            player.inventory.gem -= 99;
+            player.inventory.gold -= SPECIAL_GOLD;
+            player.inventory.gem -= SPECIAL_GEM;
             InventoryService.gI().sendItemBags(player);
 
         } catch (IOException e) {

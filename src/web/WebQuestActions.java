@@ -69,12 +69,17 @@ final class WebQuestActions {
     }
 
     static boolean trainDamage(NPoint points, int goal) {
-        if (points.dameg < 0 || points.dameg >= goal || points.tiemNang < points.damageUpgradeCost(1)) return false;
+        return trainDamage(points, goal, 0);
+    }
+
+    static boolean trainDamage(NPoint points, int goal, long reserve) {
+        long available = Math.max(0, points.tiemNang - reserve);
+        if (points.dameg < 0 || points.dameg >= goal || available < points.damageUpgradeCost(1)) return false;
         int low = 1;
         int high = Math.min(MAX_TRAINING_BATCH, goal - points.dameg);
         while (low < high) {
             int amount = low + (high - low + 1) / 2;
-            if (points.damageUpgradeCost(amount) <= points.tiemNang) low = amount;
+            if (points.damageUpgradeCost(amount) <= available) low = amount;
             else high = amount - 1;
         }
         points.increasePoint(DAMAGE, (short) low);

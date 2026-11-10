@@ -94,6 +94,10 @@ public class Whis extends Npc {
         boolean firstLearn = currentSkill == null || currentSkill.point == 0;
         int BikyRequire = firstLearn ? 9999 : 999; // Điều kiện yêu cầu bí kíp
         int skillLevel = firstLearn ? 1 : currentSkill.point + 1;
+        if (getSpecialSkillLevel(idSkill, skillLevel) == null) {
+            Service.gI().sendThongBao(player, "Kỹ năng đã đạt tối đa!");
+            return;
+        }
 
         String skillName = switch (player.gender) {
             case 0 -> "Super kamejoko";
@@ -134,6 +138,11 @@ public class Whis extends Npc {
         };
         Skill currentSkill = SkillUtil.getSkillbyId(player, idSkill);
         boolean firstLearn = currentSkill == null || currentSkill.point == 0;
+        Skill nextSkill = getSpecialSkillLevel(idSkill, firstLearn ? 1 : currentSkill.point + 1);
+        if (nextSkill == null) {
+            Service.gI().sendThongBao(player, "Kỹ năng đã đạt tối đa!");
+            return;
+        }
         int BikyRequire = firstLearn ? 9999 : 999;
 
         if (Biky.quantity < BikyRequire) {
@@ -157,9 +166,14 @@ public class Whis extends Npc {
                 if (firstLearn) {
                     SkillService.gI().learSkillSpecial(player, (byte) idSkill);
                 } else {
-                    currentSkill.point++;
-                    currentSkill.currLevel = 0;
-                    SkillService.gI().sendCurrLevelSpecial(player, currentSkill);
+                    long cooldownEnd = currentSkill.lastTimeUseThisSkill + currentSkill.coolDown;
+                    nextSkill.lastTimeUseThisSkill = cooldownEnd - nextSkill.coolDown;
+                    SkillUtil.setSkill(player, nextSkill);
+                    if (player.playerSkill.skillSelect == currentSkill) {
+                        player.playerSkill.skillSelect = nextSkill;
+                    }
+                    SkillService.gI().sendCurrLevelSpecial(player, nextSkill);
+                    Service.gI().sendTimeSkill(player, nextSkill);
                 }
             }
 
@@ -194,5 +208,10 @@ public class Whis extends Npc {
 
         } catch (IOException e) {
         }
+    }
+
+    private Skill getSpecialSkillLevel(int idSkill, int level) {
+        Skill skill = SkillUtil.createSkill(idSkill, level);
+        return skill != null && skill.point == level && level <= skill.template.maxPoint ? skill : null;
     }
 }

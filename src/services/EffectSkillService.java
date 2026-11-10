@@ -5,6 +5,7 @@ import skill.Skill;
 import network.Message;
 import consts.ConstPlayer;
 import map.Service.MapService;
+import map.Zone;
 import player.Service.PlayerService;
 import utils.SkillUtil;
 import java.util.List;
@@ -304,22 +305,34 @@ public class EffectSkillService {
 
     public void startUseMafuba(Player player, int time) {
         if (player.effectSkill != null) {
-            player.effectSkill.isUseMafuba = true;
+            player.effectSkill.mafubaCastZone = player.zone;
             player.effectSkill.timeUseMafuba = time;
             player.effectSkill.lastTimeUseMafuba = System.currentTimeMillis();
+            player.effectSkill.isUseMafuba = true;
         }
     }
 
     public void finishUseMafuba(Player player) {
-        if (player.effectSkill != null && player.newSkill != null && player.location != null) {
-            player.effectSkill.isUseMafuba = false;
+        if (player.effectSkill == null) {
+            return;
+        }
+        Zone castZone = player.effectSkill.mafubaCastZone;
+        player.effectSkill.isUseMafuba = false;
+        player.effectSkill.mafubaCastZone = null;
+        if (player.newSkill == null) {
+            return;
+        }
+        try {
+            if (castZone == null || player.zone != castZone || player.isDie() || player.location == null) {
+                return;
+            }
             for (Player playerMap : player.newSkill.playersTaget) {
                 try {
-                    if (player.location != null && playerMap.location != null) {
+                    if (playerMap != null && playerMap.zone == castZone && !playerMap.isDie() && playerMap.location != null) {
                         EffectSkillService.gI().setIsBinh(player, playerMap, 11000 * (player.newSkill.typeItem == 0 ? 1 : 2));
                         int x = player.location.x + ((player.newSkill.dir == -1) ? (-75) : 75);
                         int y = player.location.y;
-                        if (player.zone != null && !MapService.gI().isMapBlackBallWar(player.zone.map.mapId)) {
+                        if (!MapService.gI().isMapBlackBallWar(castZone.map.mapId)) {
                             Service.gI().setPos(playerMap, x, y);
                         }
                     }
@@ -328,8 +341,13 @@ public class EffectSkillService {
                 }
             }
             for (Mob mobMap : player.newSkill.mobsTaget) {
-                mobMap.effectSkill.setBinh(player, System.currentTimeMillis(), 11000 * (player.effectSkill.typeBinh == 0 ? 1 : 2));
+                if (mobMap != null && mobMap.zone == castZone && !mobMap.isDie()) {
+                    mobMap.effectSkill.setBinh(player, System.currentTimeMillis(), 11000 * (player.effectSkill.typeBinh == 0 ? 1 : 2));
+                }
             }
+        } finally {
+            player.newSkill.playersTaget.clear();
+            player.newSkill.mobsTaget.clear();
         }
     }
 

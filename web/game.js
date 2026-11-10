@@ -7,6 +7,7 @@
   let tree = null, map = null, state = null, stats = null, inventory = null, ownId = 0, selected = null, selectedSkill = 0;
   let task = null;
   let automation = 'off';
+  let chatChannel = 'map';
   let currentPanel = '', bagTab = 'bag', itemSelection = -1, lastFrame = performance.now(), frameTime = 0;
   let width = 960, height = 540, cameraX = 0, cameraY = 0, scale = 2, heartbeat, inputTimer, loginTimer;
   let reconnectTimer, retryCount = 0, intentionalDisconnect = false;
@@ -94,7 +95,7 @@
       case 'resumeFailed':
         sessionStorage.removeItem('nro-resume');joined=false;
         $('gameUI').hidden=true;$('welcome').hidden=false;$('reconnect').hidden=true;
-        document.body.classList.remove('playing');state=map=task=null;actors.clear();
+        document.body.classList.remove('playing');state=map=task=null;actors.clear();resetChat();
         $('authError').textContent='Phiên cũ đã kết thúc. Đăng nhập lại để tiếp tục nhân vật đã lưu.';
         break;
       case 'notice':
@@ -104,7 +105,7 @@
         if (data.reason) toast(clean(data.reason));
         break;
       case 'map':
-        map = data; state = tree = null; selected = null; actors.clear();
+        map = data; state = tree = null; selected = null; actors.clear(); effects.length = 0;
         stopMovement(); closePanel();
         $('mapName').textContent = data.name;
         if ($('npcDialog').dataset.kind !== 'tutorial') $('npcDialog').close(); break;
@@ -134,9 +135,14 @@
       case 'openBox': bagTab = 'box'; togglePanel('inventory'); renderPanel(); break;
       case 'inventory': inventory = data; if (currentPanel === 'inventory') renderPanel(); break;
       case 'chat': {
-        const row = element('div'); row.append(element('b', `${data.name}: `), document.createTextNode(data.text)); $('chatLog').append(row);
-        while ($('chatLog').children.length > 40) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight;
-        bubbles.set(data.id, { text: data.text, until: performance.now() + 4500 }); break;
+        const global = data.channel === 'world';
+        const log = $(global ? 'worldChatLog' : 'chatLog');
+        const row = element('div'); row.append(element('b', `${data.name}: `), document.createTextNode(data.text)); log.append(row);
+        while (log.children.length > 40) log.firstChild.remove();
+        log.scrollTop = log.scrollHeight;
+        if (!global) bubbles.set(data.id, { text: data.text, until: performance.now() + 4500 });
+        else if (chatChannel !== 'world' || $('chat').hidden) setWorldUnread(true);
+        break;
       }
       case 'menu': if (automation !== 'quest' || data.npc !== 4) openMenu(data); break;
       case 'tree': tree = data; break;
@@ -158,6 +164,12 @@
       case 'confirmSell': openDialog(clean(data.text),[button('Bán vật phẩm',()=>{$('npcDialog').close();send({type:'confirmSell'});}),button('Hủy',()=>$('npcDialog').close())]);break;
       case 'travel': openDialog('Chọn nơi muốn đến',data.maps.map(m=>button(`${m.name} · ${m.planet}`,()=>{$('npcDialog').close();send({type:'travel',index:m.index});})));break;
       case 'attack': effects.push({ ...data, until: performance.now() + 400 }); break;
+      case 'specialCast':
+      case 'specialHit': {
+        const actor = actors.get(data.id);
+        if (actor) effects.push({ ...data, x: actor.x, y: actor.y, until: performance.now() + data.duration });
+        break;
+      }
       case 'tradeState': renderTrade(data); break;
       case 'tradeOpen': send({type:'tradeView'});break;
       case 'tradePeerLocked': send({type:'tradeView'});break;
@@ -195,27 +207,46 @@
   }
   const shortcutKeys = '1234567890';
   let skillSignature = '';
+  let quickSlots = [];
   let cooldownSlots = [];
+  function selectQuickSkill(slot, use = false) {
+    if (!slot || slot.skill.level === 0) return;
+    const { skill, index, assigned } = slot;
+    if (!assigned && index !== undefined) send({ type: 'skillShortcut', slot: index, skill: skill.id });
+    selectedSkill = skill.id;
+    updateSkills();
+    if (use) attack();
+  }
   function updateSkills() {
     const learned = stats.skills.filter(skill => skill.level > 0);
-    const slots = stats.skillShortcuts.map(id => learned.find(skill => skill.id === id));
-    const signature = JSON.stringify(slots.map(skill => skill && [skill.id, skill.level]));
-    if (!learned.some(skill => skill.id === selectedSkill)) selectedSkill = slots.find(Boolean)?.id ?? learned[0]?.id;
+    const basic = stats.skills.filter(skill => skill.type !== 4).slice(0, 5);
+    quickSlots = stats.skillShortcuts.flatMap((id, index) => {
+      const assigned = learned.find(skill => skill.id === id && skill.type !== 4);
+      const skill = assigned || basic[index];
+      return skill ? [{ skill, index, assigned: Boolean(assigned), key: shortcutKeys[index] }] : [];
+    });
+    const special = stats.skills.find(skill => skill.type === 4);
+    const slots = special ? [...quickSlots, { skill: special, key: 'T' }] : quickSlots;
+    const signature = JSON.stringify(slots.map(({ skill, key, assigned }) => [skill.id, skill.level, key, assigned]));
+    if (!learned.some(skill => skill.id === selectedSkill)) selectedSkill = slots.find(slot => slot.assigned)?.skill.id ?? learned[0]?.id;
     if (signature !== skillSignature) {
       skillSignature = signature; $('skills').replaceChildren();
       cooldownSlots = [];
-      slots.forEach((skill, index) => {
-        if (!skill) return;
-        const b = button('', () => { selectedSkill = skill.id; updateSkills(); attack(); }, 'skill');
+      for (const slot of slots) {
+        const { skill, key } = slot;
+        const b = button('', () => selectQuickSkill(slot, true), 'skill');
         b.dataset.skill = skill.id;
-        b.title = `${skill.name} cấp ${skill.level} · phím ${shortcutKeys[index]}`;
+        b.disabled = skill.level === 0;
+        b.classList.toggle('special', skill.type === 4);
+        const details = b.disabled ? (skill.type === 4 ? 'Chưa học · gặp Whis' : 'Chưa học') : `Cấp ${skill.level} · phím ${key}`;
+        b.title = `${skill.name} · ${details}`;
         b.setAttribute('aria-label', b.title);
         const icon = element('img'); icon.src = iconUrl(skill.icon); icon.alt = '';
         const cooldown = element('span', '', 'cooldown');
-        cooldownSlots.push({ id: skill.id, cooldown });
-        b.append(icon, element('small', shortcutKeys[index]), cooldown);
+        if (!b.disabled) cooldownSlots.push({ id: skill.id, cooldown });
+        b.append(icon, element('small', key), cooldown);
         $('skills').append(b);
-      });
+      }
     }
     document.querySelectorAll('.skill').forEach(b => b.classList.toggle('active', +b.dataset.skill === selectedSkill));
   }
@@ -300,7 +331,7 @@
         const slot = element('select'); slot.setAttribute('aria-label', 'Ô phím tắt');
         const skill = element('select'); skill.setAttribute('aria-label', 'Kỹ năng gán');
         const empty = element('option', 'Bỏ gán'); empty.value = -1; skill.append(empty);
-        for (const learned of stats.skills.filter(item => item.level > 0)) {
+        for (const learned of stats.skills.filter(item => item.level > 0 && item.type !== 4)) {
           const option = element('option', learned.name); option.value = learned.id; skill.append(option);
         }
         stats.skillShortcuts.forEach((id, index) => {
@@ -450,6 +481,9 @@
   }
   function attack() {
     if (!joined || $('npcDialog').open || selectedSkill == null) return;
+    const skill = stats?.skills.find(s => s.id === selectedSkill && s.level > 0);
+    if (!skill) return;
+    if (skill.type === 3) { send({ type: 'attack', skill: skill.id }); return; }
     let target = selected;
     if (!target) { const mob = nearest('mob'); if (mob) { target = { kind: 'mob', id: mob.id }; selected = target; } }
     const request = { type: 'attack', skill: selectedSkill }; if (target) request[target.kind] = target.id; send(request);
@@ -577,9 +611,9 @@
   }
   function draw(time) {
     frameTime = time; const dt = Math.min(70, time - lastFrame); lastFrame = time;
-    for (const a of actors.values()) { a.px += (a.x - a.px) * Math.min(1, dt / 75); a.py += (a.y - a.py) * Math.min(1, dt / 75); }
+    for (const a of actors.values()) { a.px += (a.x - a.px) * Math.min(1, dt / 45); a.py += (a.y - a.py) * Math.min(1, dt / 45); }
     const me = own();
-    if (me && map) { cameraX += (Math.max(0, Math.min(map.width - width, me.px - width / 2)) - cameraX) * .14; cameraY += (Math.max(0, Math.min(map.height - height, me.py - height * .68)) - cameraY) * .14; }
+    if (me && map) { const follow = Math.min(1, dt / 60); cameraX += (Math.max(0, Math.min(map.width - width, me.px - width / 2)) - cameraX) * follow; cameraY += (Math.max(0, Math.min(map.height - height, me.py - height * .68)) - cameraY) * follow; }
     else { cameraX = cameraY = 0; }
     ClassicScene.background(ctx, img, map, width, height, cameraX, cameraY);
     ClassicScene.decorations(ctx, img, map, width, height, cameraX, cameraY, false);
@@ -592,7 +626,13 @@
       [...actors.values()].sort((a, b) => a.y - b.y).forEach(a => drawActor(a));
       for (let i = effects.length - 1; i >= 0; i--) {
         const e = effects[i]; if (time > e.until) { effects.splice(i, 1); continue; }
-        const progress = 1 - (e.until - time) / 400, x = e.x + (e.targetX - e.x) * progress - cameraX, y = e.y + (e.targetY - e.y) * progress - cameraY - 18;
+        const progress = 1 - (e.until - time) / (e.duration || 400);
+        if (e.type === 'specialCast') {
+          ctx.fillStyle = '#ffe48a'; ctx.shadowColor = '#f7d156'; ctx.shadowBlur = 14; ctx.beginPath();
+          ctx.arc(e.x - cameraX + e.direction * 10, e.y - cameraY - 18, 3 + progress * 8, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+          continue;
+        }
+        const x = e.x + (e.targetX - e.x) * progress - cameraX, y = e.y + (e.targetY - e.y) * progress - cameraY - 18;
         ctx.fillStyle = '#fff8c9'; ctx.shadowColor = '#ffc95f'; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(x, y, 3 + 3 * Math.sin(progress * Math.PI), 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       }
       ClassicScene.decorations(ctx, img, map, width, height, cameraX, cameraY, true);
@@ -642,7 +682,7 @@
   document.addEventListener('keydown', e => {
     if (!joined || e.target.matches('input,select,textarea') || $('npcDialog').open) return;
     const key = e.key.toLowerCase();
-    if ((key === ' ' || key === 'enter') && e.target.closest('.auto-controls')) return;
+    if ((key === ' ' || key === 'enter') && e.target.closest('.auto-controls, .chat, .chat-toggle, .skills, #openPanel')) return;
     if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'enter'].includes(key)) e.preventDefault();
     keys.add(key);
     if (e.repeat) return;
@@ -654,9 +694,12 @@
     else if (key === 'i') { if ($('panel').hidden) togglePanel('inventory'); else closePanel(); }
     else if (key === 'escape') closePanel();
     else if (key === 'enter') openChat();
+    else if (key === 't') {
+      const special = stats?.skills.find(s => s.type === 4 && s.level > 0);
+      if (special) { selectedSkill = special.id; updateSkills(); attack(); }
+    }
     else if (shortcutKeys.includes(key) && key.length === 1) {
-      const skill = stats?.skills.find(s => s.level > 0 && s.id === stats.skillShortcuts[shortcutKeys.indexOf(key)]);
-      if (skill) { selectedSkill = skill.id; updateSkills(); }
+      selectQuickSkill(quickSlots.find(slot => slot.key === key));
     }
     sendMovement();
   });
@@ -669,16 +712,55 @@
   $('touchJump').addEventListener('pointerdown', e => { e.preventDefault(); input.jump = true; sendMovement(); });
   $('touchAttack').addEventListener('click', attack); $('touchInteract').addEventListener('click', interact); $('touchPea').addEventListener('click', () => send({ type: 'pea' }));
   document.querySelectorAll('[data-panel]').forEach(b => b.addEventListener('click', () => togglePanel(b.dataset.panel)));
+  function setWorldUnread(unread) {
+    $('chatToggle').classList.toggle('unread', unread);
+    $('worldChatTab').classList.toggle('unread', unread);
+    $('chatToggle').setAttribute('aria-label', unread ? 'Trò chuyện, có tin Thế giới mới' : 'Trò chuyện');
+  }
+  function selectChatChannel(channel) {
+    chatChannel = channel;
+    const global = channel === 'world';
+    $('mapChatTab').setAttribute('aria-pressed', String(!global));
+    $('worldChatTab').setAttribute('aria-pressed', String(global));
+    $('chatLog').hidden = global;
+    $('worldChatLog').hidden = $('worldChatRules').hidden = !global;
+    $('chatInput').placeholder = global ? 'Nhắn với thế giới…' : 'Nhắn trong khu vực…';
+    $('chatInput').maxLength = global ? 100 : 120;
+    if (global && !$('chat').hidden) setWorldUnread(false);
+    const log = $(global ? 'worldChatLog' : 'chatLog');
+    log.scrollTop = log.scrollHeight;
+  }
   function openChat() {
     stopMovement();
     $('chat').hidden = false;
+    $('chatToggle').setAttribute('aria-expanded', 'true');
+    selectChatChannel(chatChannel);
     $('chatInput').focus();
+  }
+  function closeChat() {
+    $('chat').hidden = true;
+    $('chatToggle').setAttribute('aria-expanded', 'false');
+  }
+  function resetChat() {
+    closeChat();
+    $('chatLog').replaceChildren();
+    $('worldChatLog').replaceChildren();
+    $('chatInput').value = '';
+    bubbles.clear();
+    selectChatChannel('map');
+    setWorldUnread(false);
   }
   $('openPanel').addEventListener('click', () => togglePanel('inventory'));
   $('autoQuest').addEventListener('click', () => send({ type: 'automation', mode: automation === 'quest' ? 'off' : 'quest' }));
   $('autoFarm').addEventListener('click', () => send({ type: 'automation', mode: automation === 'farm' ? 'off' : 'farm' }));
   $('chatToggle').addEventListener('click', () => {
-    if ($('chat').hidden) openChat(); else $('chat').hidden = true;
+    if ($('chat').hidden) openChat(); else closeChat();
+  });
+  $('mapChatTab').addEventListener('click', () => selectChatChannel('map'));
+  $('worldChatTab').addEventListener('click', () => selectChatChannel('world'));
+  $('closeChat').addEventListener('click', () => { closeChat(); $('chatToggle').focus(); });
+  $('chat').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.stopPropagation(); closeChat(); $('chatToggle').focus(); }
   });
   $('closePanel').addEventListener('click', closePanel);
   $('returnHome').addEventListener('click', () => send({ type: 'returnHome' }));
@@ -695,7 +777,7 @@
     state = map = stats = task = null;
     actors.clear();
     closePanel();
-    $('chat').hidden = true;
+    resetChat();
     if (socket) socket.close();
     else reconnectTimer = setTimeout(connect, 300);
   }
@@ -710,7 +792,7 @@
     send({ type: register ? 'register' : 'login', username: $('username').value.trim(), password: $('password').value, name: $('characterName').value, gender: +$('gender').value, invite: $('invite').value });
     loginTimer = setTimeout(() => { authReady(); $('authError').textContent = 'Máy chủ đang xử lý. Nếu chưa vào được, hãy thử lại.'; }, 20000);
   });
-  $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (text) send({ type: 'chat', text }); $('chatInput').value = ''; $('chatInput').blur(); });
+  $('chatForm').addEventListener('submit', e => { e.preventDefault(); const text = $('chatInput').value.trim(); if (joined && text) send({ type: 'chat', channel: chatChannel, text }); $('chatInput').value = ''; $('chatInput').blur(); });
   $('username').value = localStorage.getItem('nro-username') || '';
   fetch('/api/status').then(r => { if (!r.ok) throw Error('status'); return r.json(); }).then(s => { $('onlineCount').textContent = `${s.online}/${s.maxPlayers}`; $('inviteField').hidden = !s.inviteRequired; }).catch(() => { $('connectionText').textContent = 'Đang khởi động'; });
   fetch('/api/catalog').then(r => { if (!r.ok) throw Error('catalog'); return r.json(); }).then(c => { catalog = c; }).catch(() => toast('Chưa tải được dữ liệu hình ảnh. Hãy tải lại trang.'));

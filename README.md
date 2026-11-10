@@ -18,13 +18,17 @@ Không thể bảo đảm không ngắt kết nối khi mạng thiết bị mấ
 
 Khung HP/KI, logo, nút, font pixel và sprite lấy từ tài nguyên gốc. Bảng nhân vật mở bằng tên ở góc trái hoặc phím I, có các tab nhiệm vụ, hành trang, kỹ năng, bang hội và chức năng. Hộp thoại NPC hiển thị lời thoại do server gửi.
 
+Thanh kỹ năng hiện năm ô mặc định theo hành tinh và một ô tuyệt kỹ phím **T**. Nhân vật mới học sẵn đòn cơ bản theo dữ liệu tạo nhân vật gốc. Các ô khóa mở khi học chiêu. Tuyệt kỹ Super Kamejoko, Ma phong ba và Cađíc liên hoàn chưởng dùng biểu tượng và thông số từ `src/nro.sql` trong `SRC_NRO.rar`, cùng điều kiện học tại Whis.
+
+Nút chat màu cam hoặc phím **Enter** mở khung trò chuyện. **Khu vực** gửi trong cùng khu, **Thế giới** gửi tới mọi người đang chơi, kể cả khác map. Kênh Thế giới giữ điều kiện gốc cho người chơi thường. Cần trên 1,5 triệu sức mạnh và ít nhất 5 ngọc trong game. Mỗi tin dùng 1 ngọc và cách tin trước ít nhất 30 giây.
+
 Trình duyệt vẽ 33 bộ ô địa hình theo lưới map từ `SRC_NRO.rar` và chọn lớp ảnh nền theo cặp `bgId` và `bgType`. Ảnh nền và bộ ô chỉ tải khi vào map cần dùng. Thứ tự các lớp nền và 33 dáng ghép sprite lấy từ client trong `Mod_Local.rar`. Hoạt ảnh cơ bản dùng bảng gốc. Một số hiệu ứng chiến đấu, thời tiết và hoạt ảnh đặc biệt vẫn được tái dựng gần đúng.
 
 ## Gameplay và các phần được lược bỏ
 
 Giữ mã xử lý nhân vật, ba hành tinh, bản đồ, quái, boss, nhiệm vụ, kỹ năng, trang bị, đệ tử, bang hội, nâng cấp, phó bản và giải đấu. Web có màn hình hành trang, chỉ số/kỹ năng, nhiệm vụ, NPC/cửa hàng, nâng cấp, bang hội và giao dịch giữa người chơi. Các thao tác dùng lại kiểm tra và xử lý của engine.
 
-Hai nút **Auto NV** và **Auto đánh** ở góc phải dùng được sau khi đăng nhập. **Auto NV** điều khiển nhân vật đi đến cửa đã mở, gặp NPC, đánh mục tiêu và nhặt đồ theo bước nhiệm vụ. Các bước cần lựa chọn, như tăng chỉ số hoặc gia nhập bang hội, sẽ dừng và báo để bạn thao tác. **Auto đánh** dùng đòn cơ bản để đánh quái thường trong khu hiện tại và có thể dùng đậu sẵn trong túi khi HP hoặc KI thấp.
+Hai nút **Auto NV** và **Auto đánh** ở góc phải dùng được sau khi đăng nhập. **Auto NV** tự chạy qua cửa đã mở và các tuyến tàu miễn phí qua NPC để tới mục tiêu, gặp NPC, đánh quái và nhặt đồ theo bước nhiệm vụ. Auto tuân theo điều kiện vào map và giờ mở sự kiện. Các bước cần lựa chọn, như tăng chỉ số hoặc gia nhập bang hội, sẽ dừng và báo để bạn thao tác. **Auto đánh** dùng đòn cơ bản để đánh quái thường trong khu hiện tại và có thể dùng đậu sẵn trong túi khi HP hoặc KI thấp.
 
 Mỗi nhân vật bật riêng một chế độ. Người trong cùng khu nhìn thấy các hành động và nhận tiến độ theo luật nhiệm vụ gốc. Bấm lại nút hoặc điều khiển nhân vật để tắt. Máy chủ xử lý Auto khi tab ở nền và kết nối vẫn mở. Sau khi thoát hoặc mất kết nối, hãy bật lại khi vào game.
 
@@ -73,10 +77,11 @@ Không cần tạo thêm Render Postgres nếu tiếp tục dùng Aiven hiện c
 
 | Thao tác | Máy tính | Điện thoại / tablet |
 | --- | --- | --- |
-| Đi / bay lên xuống | WASD hoặc phím mũi tên | Bàn điều hướng cảm ứng |
+| Chạy / bay lên xuống | WASD hoặc phím mũi tên | Bàn điều hướng cảm ứng |
 | Nhảy | Space | Nút ↥ |
 | Chọn quái / người chơi | Bấm vào nhân vật trên map | Chạm vào nhân vật |
 | Đánh | J; phím 1–9 và 0 chọn kỹ năng đã gán trong tab Kỹ năng | ĐÁNH hoặc chạm ô kỹ năng |
+| Tuyệt kỹ đã học | T | Ô tuyệt kỹ viền vàng |
 | NPC / lối đi | Đến gần, nhấn E hoặc bấm nút tương tác | Nút E / nút hiện trên map |
 | Lối ở mép map | Đi tiếp tới sát mép để tự chuyển map | Giữ nút hướng tới sát mép hoặc chạm mũi tên khi đã đứng trong cửa |
 | Nhặt đồ | F | Chạm vật phẩm / nút Nhặt |

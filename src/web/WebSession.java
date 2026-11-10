@@ -34,6 +34,7 @@ public final class WebSession extends MySession {
     long requestWindow = System.currentTimeMillis();
     int menuNpc = -1;
     int menuChoices;
+    boolean autoMenu;
     int inputCount;
     int inputType;
     byte[] confirmItem;
@@ -97,6 +98,17 @@ public final class WebSession extends MySession {
                     int npc = in.readShort();
                     send(java.util.Map.of("type", "npcChat", "npc", npc, "text", in.readUTF()));
                 }
+                case -45 -> {
+                    int phase = in.readUnsignedByte(), id = in.readInt(), skill = in.readShort();
+                    if (phase == 20) {
+                        in.readByte(); // Original client animation frame type.
+                        send(java.util.Map.of("type", "specialCast", "id", id, "skill", skill,
+                                "direction", in.readByte(), "duration", in.readUnsignedShort()));
+                    } else if (phase == 21) {
+                        send(java.util.Map.of("type", "specialHit", "id", id, "skill", skill,
+                                "targetX", in.readShort(), "targetY", in.readShort(), "duration", in.readUnsignedShort()));
+                    }
+                }
                 case -34 -> {
                     int action = in.readUnsignedByte();
                     if (action == 0) {
@@ -131,7 +143,7 @@ public final class WebSession extends MySession {
                     for (int i = 0; i < menuChoices; i++) choices.add(in.readUTF());
                     var template = GameCatalog.npcs.get(menuNpc);
                     int portrait = in.available() >= 2 ? in.readShort() : template != null && template.avatar > 0 ? template.avatar : -1;
-                    send(java.util.Map.of("type", "menu", "npc", menuNpc, "text", text, "choices", choices, "portrait", portrait));
+                    if (!autoMenu) send(java.util.Map.of("type", "menu", "npc", menuNpc, "text", text, "choices", choices, "portrait", portrait));
                 }
                 case -125 -> {
                     String title = in.readUTF(); inputCount = in.readUnsignedByte();

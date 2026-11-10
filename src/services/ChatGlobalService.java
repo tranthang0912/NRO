@@ -60,23 +60,30 @@ public class ChatGlobalService implements Runnable {
         if (haveInChatting) {
             return;
         }
-        if (player.inventory.gem >= 5) {
-            if (player.isAdmin() || Util.canDoWithTime(player.idMark.getLastTimeChatGlobal(), 30000)) {
-                if (player.isAdmin() || player.nPoint.power > 1500000) {
-                    player.inventory.subGem(1);
-                    Service.gI().sendMoney(player);
-                    player.idMark.setLastTimeChatGlobal(System.currentTimeMillis());
-                    waitingChat.add(new ChatGlobal(player, text.length() > 100 ? text.substring(0, 100) : text));
-                } else {
-                    Service.gI().sendThongBao(player, "Sức mạnh phải ít nhất 1tr5 sức mạnh mới có thể chat thế giới");
-                }
-            } else {
-                Service.gI().sendThongBao(player, "Không thể chat thế giới lúc này, vui lòng đợi "
-                        + TimeUtil.getTimeLeft(player.idMark.getLastTimeChatGlobal(), 5));
-            }
-        } else {
-            Service.gI().sendThongBao(player, "Không đủ ngọc chat thế giới");
+        if (tryChargePlayerMessage(player)) {
+            waitingChat.add(new ChatGlobal(player, text.length() > 100 ? text.substring(0, 100) : text));
         }
+    }
+
+    public static boolean tryChargePlayerMessage(Player player) {
+        if (player.inventory.gem < 5) {
+            Service.gI().sendThongBao(player, "Không đủ ngọc chat thế giới");
+            return false;
+        }
+        long lastChat = player.idMark.getLastTimeChatGlobal();
+        if (!player.isAdmin() && !Util.canDoWithTime(lastChat, 30000)) {
+            Service.gI().sendThongBao(player, "Không thể chat thế giới lúc này, vui lòng đợi "
+                    + TimeUtil.getTimeLeft(lastChat, 30));
+            return false;
+        }
+        if (!player.isAdmin() && player.nPoint.power <= 1500000) {
+            Service.gI().sendThongBao(player, "Cần trên 1tr5 sức mạnh để chat thế giới");
+            return false;
+        }
+        player.inventory.subGem(1);
+        Service.gI().sendMoney(player);
+        player.idMark.setLastTimeChatGlobal(System.currentTimeMillis());
+        return true;
     }
 
     @Override

@@ -1027,7 +1027,7 @@ public class SkillService {
                     return player.nPoint.mp >= player.playerSkill.skillSelect.manaUse;
                 }
                 case 1 -> {
-                    int mpUse = (player.nPoint.mpMax * player.playerSkill.skillSelect.manaUse / 100);
+                    long mpUse = (long) player.nPoint.mpMax * player.playerSkill.skillSelect.manaUse / 100;
                     return player.nPoint.mp >= mpUse;
                 }
                 case 2 -> {
@@ -1084,7 +1084,7 @@ public class SkillService {
                     }
                 }
                 case 1 -> {
-                    int mpUse = (int) (player.nPoint.mpMax * player.playerSkill.skillSelect.manaUse / 100);
+                    long mpUse = (long) player.nPoint.mpMax * player.playerSkill.skillSelect.manaUse / 100;
                     if (player.nPoint.mp >= mpUse) {
                         player.nPoint.setMp(player.nPoint.mp - mpUse);
                     }

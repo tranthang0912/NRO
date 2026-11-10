@@ -8,6 +8,7 @@ package player;
 
 
 import item.Item;
+import map.Zone;
 import mob.Mob;
 import skill.Skill;
 import services.SkillService;
@@ -23,6 +24,7 @@ public class NewSkill {
     public static final int TIME_END_26 = 11000;
 
     private Player player;
+    private Zone castZone;
 
     public NewSkill(Player player) {
         this.player = player;
@@ -55,8 +57,14 @@ public class NewSkill {
     public byte typeItem;
     
     public long lastTimeSkillSpecial;
+
+    private Item getSpecialSkillEquipment() {
+        List<Item> itemsBody = player.inventory.itemsBody;
+        return itemsBody.size() > 10 ? itemsBody.get(10) : null;
+    }
+
     public byte getTypePaint() {
-        Item item = player.inventory.itemsBody.get(10);
+        Item item = getSpecialSkillEquipment();
         if (item != null && item.isNotNullItem()) {
             int itemId = item.template.id;
             if (itemId == 1044 || itemId == 1211 || itemId == 1212) {
@@ -70,7 +78,7 @@ public class NewSkill {
     }
 
     public byte getTypeItem() {
-        Item item = player.inventory.itemsBody.get(10);
+        Item item = getSpecialSkillEquipment();
         if (item != null && item.isNotNullItem()) {
             int itemId = item.template.id;
             if (itemId == 1279 && player.gender == 1) {
@@ -81,7 +89,9 @@ public class NewSkill {
         return 0;
     }
     private void update() {
-        if (this.isStartSkillSpecial = true) {
+        if (!isStartSkillSpecial || player.zone != castZone) {
+            closeSkillSpecial();
+        } else {
             SkillService.gI().updateSkillSpecial(player);
         }
     }
@@ -116,6 +126,7 @@ public class NewSkill {
         this._xObjTaget = (short) Math.abs(this._xObjTaget);
         this._yObjTaget = (short) Math.abs(_yObjTaget);
         this.isStartSkillSpecial = true;
+        this.castZone = player.zone;
         this.stepSkillSpecial = 0;
         this.lastTimeSkillSpecial = System.currentTimeMillis();
         this.start(250);
@@ -129,6 +140,7 @@ public class NewSkill {
 
     public void closeSkillSpecial() {
         this.isStartSkillSpecial = false;
+        this.castZone = null;
         this.stepSkillSpecial = 0;
         this.playersTaget.clear();
         this.mobsTaget.clear();
@@ -140,21 +152,20 @@ public class NewSkill {
     private boolean isActive = false;
 
     private void close() {
-        try {
-            this.isActive = false;
-            this.timer.cancel();
-            this.timerTask.cancel();
-            this.timer = null;
-            this.timerTask = null;
-        } catch (Exception e) {
-            this.timer = null;
-            this.timerTask = null;
-        }
+        this.isActive = false;
+        if (this.timer != null) this.timer.cancel();
+        if (this.timerTask != null) this.timerTask.cancel();
+        this.timer = null;
+        this.timerTask = null;
     }
 
     public void start(int leep) {
         if (this.isActive == false) {
             this.isActive = true;
+            if (web.WebConfig.ENABLED) {
+                scheduleWeb(leep);
+                return;
+            }
             this.timer = new Timer();
             this.timerTask = new TimerTask() {
                 @Override
@@ -170,7 +181,20 @@ public class NewSkill {
         }
     }
 
+    private void scheduleWeb(int interval) {
+        web.GameWorld.schedule(() -> {
+            if (!isActive) return;
+            if (player == null || player.newSkill != this) {
+                close();
+                return;
+            }
+            update();
+            if (isActive) scheduleWeb(interval);
+        }, interval);
+    }
+
     public void dispose() {
+        closeSkillSpecial();
         this.player = null;
         this.skillSelect = null;
     }

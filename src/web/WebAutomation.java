@@ -28,7 +28,8 @@ import static consts.ConstTask.*;
 /** Runs on the authoritative world thread. Each session controls only its own character. */
 final class WebAutomation {
     private enum Mode { OFF, QUEST, FARM }
-    private record Route(map.Map map, WayPoint first) {}
+    private record Leg(WayPoint portal, WebQuestTransit.Trip trip) {}
+    private record Route(map.Map map, Leg first) {}
     private static final IntPredicate ANY_MOB = template -> true;
     private static final long QUEST_TIMEOUT_MS = 90000;
     private final WebSession session;
@@ -40,7 +41,8 @@ final class WebAutomation {
     private int objectiveCount = -1;
     private long objectivePower;
     private Zone previousZone;
-    private WayPoint nextPortal;
+    private Leg nextLeg;
+    private long transitStarted;
     private int previousX;
     private int previousDirection;
     private int blockedMoves;
@@ -73,7 +75,8 @@ final class WebAutomation {
         mode = requested;
         farmZone = requested == Mode.FARM ? player.zone : null;
         previousZone = null;
-        nextPortal = null;
+        nextLeg = null;
+        transitStarted = 0;
         objective = objectiveCount = -1;
         lastBossSearch = 0;
         lastProgress = System.currentTimeMillis();
@@ -84,7 +87,7 @@ final class WebAutomation {
         if (active()) resetMotion();
         mode = Mode.OFF;
         farmZone = previousZone = null;
-        nextPortal = null;
+        nextLeg = null;
         publish(reason);
     }
 
@@ -100,7 +103,7 @@ final class WebAutomation {
         blockedMoves = 0;
     }
 
-    void update(long tick) {
+    void update() {
         Player player = session.player;
         if (player == null || player.zone == null || player.isDie()) {
             stop("Auto đã dừng vì nhân vật đã ngã gục.");
@@ -110,10 +113,9 @@ final class WebAutomation {
             stop("Auto đã dừng vì nhân vật đang giao dịch hoặc thách đấu.");
             return;
         }
-        if (tick % 3 != 0) return;
         session.direction = session.vertical = 0;
         session.jump = false;
-        if (player.effectSkill.isHaveEffectSkill()) return;
+        if (player.newSkill.isStartSkillSpecial || player.effectSkill.isHaveEffectSkill()) return;
         try {
             if (mode == Mode.FARM) {
                 if (player.zone != farmZone) stop("Auto đánh đã dừng vì nhân vật đổi khu vực.");
@@ -130,6 +132,14 @@ final class WebAutomation {
     }
 
     private void quest(Player player) throws Exception {
+        if (WebQuestTransit.pending(player)) {
+            long now = System.currentTimeMillis();
+            if (transitStarted == 0) transitStarted = now;
+            if (now - transitStarted > 75000) stop("Chuyến đi chưa hoàn tất. Hãy kiểm tra lại lối vào map nhiệm vụ.");
+            else lastProgress = now;
+            return;
+        }
+        transitStarted = 0;
         var task = player.playerTask.taskMain;
         if (task == null || task.id == 29 || task.index >= task.subTasks.size()) {
             stop("Không còn nhiệm vụ chính để tự làm.");
@@ -139,7 +149,7 @@ final class WebAutomation {
         int id = TaskService.gI().getIdTask(player);
         if (player.zone != previousZone || id != objective || step.count != objectiveCount) {
             previousZone = player.zone;
-            nextPortal = null;
+            nextLeg = null;
             objective = id;
             objectiveCount = step.count;
             lastProgress = System.currentTimeMillis();
@@ -163,6 +173,10 @@ final class WebAutomation {
         }
         if (id == TASK_13_0) {
             stop("Hãy tự tạo hoặc gia nhập bang hội theo nhiệm vụ, rồi bật lại Auto NV.");
+            return;
+        }
+        if (id >= TASK_28_0 && id <= TASK_28_6 && !MapService.gI().isMapMaBu(player.zone.map.mapId)) {
+            if (atMap(player, 52)) enterMabu(player);
             return;
         }
         if (id == TASK_0_3 || id == TASK_0_4) {
@@ -311,7 +325,7 @@ final class WebAutomation {
     private void huntBoss(Player player, int id, int boss) {
         for (Player target : player.zone.getBosses()) {
             if (WebQuestTargets.matchesBoss(target, id, boss)) {
-                nextPortal = null;
+                nextLeg = null;
                 if (SkillService.gI().canAttackPlayer(player, target)) {
                     long hp = target.nPoint.hp;
                     strike(player, target, null, target.location.x, target.location.y);
@@ -323,10 +337,10 @@ final class WebAutomation {
         long now = System.currentTimeMillis();
         if (now - lastBossSearch >= 2000) {
             lastBossSearch = now;
-            nextPortal = findRoute(player, map -> map.zones.get(0).getBosses().stream()
+            nextLeg = findRoute(player, map -> map.zones.get(0).getBosses().stream()
                     .anyMatch(target -> WebQuestTargets.matchesBoss(target, id, boss)));
         }
-        if (nextPortal != null) moveToPortal(player, nextPortal);
+        if (nextLeg != null) followLeg(player);
     }
 
     private void strike(Player player, Player target, Mob mob, int x, int y) {
@@ -356,17 +370,60 @@ final class WebAutomation {
     }
 
     private void travel(Player player, Predicate<map.Map> goal) {
-        if (nextPortal == null) nextPortal = findRoute(player, goal);
-        if (nextPortal == null) { stop("Hãy tự đến map nhiệm vụ, rồi bật lại Auto NV."); return; }
-        moveToPortal(player, nextPortal);
+        if (nextLeg == null) nextLeg = findRoute(player, goal);
+        if (nextLeg == null) { stop("Chưa có lối tự đi đến map nhiệm vụ. Hãy xem chỉ dẫn trong tab Nhiệm vụ."); return; }
+        followLeg(player);
+    }
+
+    private void followLeg(Player player) {
+        if (nextLeg.portal != null) {
+            moveToPortal(player, nextLeg.portal);
+            return;
+        }
+        var trip = nextLeg.trip;
+        var npc = player.zone.map.getNpc(player, trip.npcId());
+        if (npc == null) {
+            if (player.zone.map.npcs.stream().noneMatch(n -> n.tempId == trip.npcId())) nextLeg = null;
+            else approachNpc(player, trip.npcId());
+            return;
+        }
+        Zone before = player.zone;
+        confirmTransport(player, npc, trip.menu(), trip.option());
+        nextLeg = null;
+        if (player.zone == before && !WebQuestTransit.pending(player)) stop("NPC chưa mở chuyến đi này. Hãy xem điều kiện vào map.");
+        if (WebQuestTransit.pending(player)) session.notice("Đang đi tới tương lai theo thời gian chờ gốc của tàu.");
+    }
+
+    private void enterMabu(Player player) {
+        var npc = player.zone.map.getNpc(player, ConstNpc.OSIN);
+        if (npc == null) { approachNpc(player, ConstNpc.OSIN); return; }
+        if (!utils.TimeUtil.isMabuOpen() || utils.TimeUtil.isMabu14HOpen()) {
+            npc.openBaseMenu(player);
+            stop("Chưa đến giờ mở phó bản Ma Bư của nhiệm vụ. Hãy bật lại Auto khi sự kiện mở.");
+            return;
+        }
+        Zone before = player.zone;
+        confirmTransport(player, npc, ConstNpc.MENU_OPEN_MMB, 0);
+        if (player.zone == before) stop("Chưa thể vào phó bản Ma Bư. Hãy xem điều kiện của Ôsin.");
+    }
+
+    private void confirmTransport(Player player, npc.Npc npc, int menu, int option) {
+        session.menuChoices = 0;
+        session.autoMenu = true;
+        try {
+            npc.openBaseMenu(player);
+            if (session.menuNpc == npc.tempId && session.menuChoices > option && player.idMark.getIndexMenu() == menu) {
+                session.menuChoices = 0;
+                npc.confirmMenu(player, option);
+            }
+        } finally {
+            session.autoMenu = false;
+        }
     }
 
     private void moveToPortal(Player player, WayPoint portal) {
         if (player.zone.map.getWaypointAt(player.location.x, player.location.y) == portal) {
-            Zone before = player.zone;
-            session.world.portal(session, portal);
-            nextPortal = null;
-            if (before == player.zone) stop("Lối đi chưa mở. Hãy xem điều kiện trong tab Nhiệm vụ.");
+            enterPortal(player, portal);
         } else {
             int margin = Math.max(4, (portal.maxX - portal.minX) / 2 - 2);
             int x = (portal.minX + portal.maxX) / 2;
@@ -388,7 +445,18 @@ final class WebAutomation {
         }
     }
 
-    private static WayPoint findRoute(Player player, Predicate<map.Map> goal) {
+    boolean approaches(WayPoint portal) {
+        return mode == Mode.QUEST && portal != null && nextLeg != null && nextLeg.portal == portal;
+    }
+
+    void enterPortal(Player player, WayPoint portal) {
+        Zone before = player.zone;
+        session.world.portal(session, portal);
+        nextLeg = null;
+        if (before == player.zone) stop("Lối đi chưa mở. Hãy xem điều kiện trong tab Nhiệm vụ.");
+    }
+
+    private Leg findRoute(Player player, Predicate<map.Map> goal) {
         var seen = new HashSet<Integer>();
         var queue = new ArrayDeque<Route>();
         queue.add(new Route(player.zone.map, null));
@@ -397,14 +465,21 @@ final class WebAutomation {
             Route route = queue.remove();
             if (route.first != null && goal.test(route.map)) return route.first;
             for (var exit : route.map.wayPoints) {
-                if (!seen.add(exit.goMap)) continue;
-                var map = MapService.gI().getMapById(exit.goMap);
-                if (map == null || map.zones.isEmpty() || (map.type != ConstMap.MAP_NORMAL && map.type != ConstMap.MAP_OFFLINE)
-                        || ChangeMapService.gI().checkMapCanJoin(player, map.zones.get(0)) == null) continue;
-                queue.add(new Route(map, route.first == null ? exit : route.first));
+                addRoute(player, seen, queue, exit.goMap, route.first == null ? new Leg(exit, null) : route.first);
+            }
+            for (var trip : WebQuestTransit.from(player, route.map, objective)) {
+                addRoute(player, seen, queue, trip.destination(), route.first == null ? new Leg(null, trip) : route.first);
             }
         }
         return null;
+    }
+
+    private static void addRoute(Player player, HashSet<Integer> seen, ArrayDeque<Route> queue, int destination, Leg first) {
+        if (!seen.add(destination)) return;
+        var map = MapService.gI().getMapById(destination);
+        if (map == null || map.zones.isEmpty() || (map.type != ConstMap.MAP_NORMAL && map.type != ConstMap.MAP_OFFLINE)
+                || ChangeMapService.gI().checkMapCanJoin(player, map.zones.get(0)) == null) return;
+        queue.add(new Route(map, first));
     }
 
     private void aim(Player player, int x, int y, int xTolerance, int yTolerance) {
@@ -415,7 +490,7 @@ final class WebAutomation {
         blockedMoves = blocked ? blockedMoves + 1 : 0;
         session.direction = direction;
         if (direction != 0) session.facing = direction;
-        if (blockedMoves >= 3 && player.nPoint.mp > 0) session.vertical = -1;
+        if (blockedMoves >= 6 && player.nPoint.mp > 0) session.vertical = -1;
         else if (blocked) session.jump = true;
         else if (direction == 0 && Math.abs(dy) > yTolerance) session.vertical = Integer.signum(dy);
     }

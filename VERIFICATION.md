@@ -56,3 +56,11 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Đã tái hiện Auto bị kẹt ở lối Làng Mori sang Vách núi Moori. Sau khi sửa, nhân vật đi qua lối này và lối Thị trấn Moori sang Thung lũng Maima bằng thao tác di chuyển của máy chủ. Đã thử phần nhặt vật thể Sao băng và báo lại NPC trên cả ba hành tinh. Chỉ dẫn nhiệm vụ Sao băng trỏ đến vách núi có vật thể. Chỉ dẫn báo cáo nhiệm vụ 11 trỏ đến NPC ở nhà.
 - Hành trang đầy làm Auto dừng sau một lần nhặt thất bại và giữ nguyên tiến độ. Dọn một ô rồi bật lại cho phép nhặt vật thể Sao băng.
 - Bước báo cáo cuối với Ôsin chuyển sang trạng thái hoàn thành khi nói chuyện bằng tay hoặc bằng Auto. Việc vào sự kiện Ma Bư vẫn cần chọn trong menu NPC theo thời gian mở cửa của game.
+
+## HUD, chat, tuyệt kỹ và di chuyển
+
+- Thử trên Chrome desktop và mô phỏng điện thoại 320 px ở cả màn hình dọc và ngang. Dòng sức mạnh và tên map nằm dưới khung HP/KI. Năm ô kỹ năng và ô tuyệt kỹ nằm cùng hàng trên điện thoại thử. Phím số chọn chiêu đã học.
+- Kênh Thế giới gửi tin đến người ở map khác, còn kênh Khu vực giữ phạm vi cùng khu. Kiểm tra điều kiện sức mạnh, trừ đúng 1 ngọc và từ chối gửi liên tiếp trong thời gian chờ. Tin nhắn được hiển thị dưới dạng văn bản.
+- Đối chiếu cả 30 cấp của ba tuyệt kỹ với `src/nro.sql` trong `SRC_NRO.rar`. Đã học Super Kamejoko qua Whis bằng nhân vật thử và kích hoạt cả ba tuyệt kỹ để kiểm tra gồng, phát chiêu, trừ KI và hồi chiêu.
+- Đo tốc độ chạy cơ bản từ 120 lên 240 pixel bản đồ/giây. Thử nhảy lên 152 pixel và qua vách Đồi hoa cúc. Cả năm nhân vật chạy Auto cùng hoàn thành phần tân thủ và đánh mộc nhân sau khi tăng tốc. Hai lối ở Namek đã được thử lại.
+- Auto đã dùng NPC gốc để đi từ Trạm Trái Đất sang Trạm Namek, từ Thành phố Vegeta đến Nappa và từ nhà Bunma tương lai về Trái Đất. Các bài thử này chạy trên PostgreSQL riêng.

@@ -1,5 +1,6 @@
 package player;
 import lombok.Setter;
+import map.Zone;
 import mob.Mob;
 import services.EffectSkillService;
 import services.ItemTimeService;
@@ -90,6 +91,7 @@ public class EffectSkill {
     public boolean isUseMafuba;
     public long lastTimeUseMafuba;
     public int timeUseMafuba;
+    public Zone mafubaCastZone;
 
     public boolean isUseSkillMonkey;
     public long lastTimeUseSkillMonkey;
@@ -225,6 +227,7 @@ public class EffectSkill {
         this.plAnTroi = null;
         this.plTroi = null;
         this.playerUseMafuba = null;
+        this.mafubaCastZone = null;
         this.mobAnTroi = null;
     }
 }

@@ -13,7 +13,8 @@ public final class DatabaseBootstrap {
             s.execute("CREATE SCHEMA IF NOT EXISTS " + schema);
             s.execute("SET LOCAL search_path TO " + schema);
             s.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY, installed_at TIMESTAMPTZ NOT NULL DEFAULT now())");
-            String[] migrations={"V1__game.sql","V2__web_game.sql","V3__original_quest_text.sql","V4__original_kame_npcs.sql"};
+            String[] migrations={"V1__game.sql","V2__web_game.sql","V3__original_quest_text.sql","V4__original_kame_npcs.sql",
+                "V5__original_special_skills.sql"};
             for(int i=0;i<migrations.length;i++){
                 int version=i+1;
                 try(ResultSet rs=s.executeQuery("SELECT 1 FROM schema_version WHERE version="+version)){if(rs.next())continue;}

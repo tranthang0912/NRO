@@ -121,9 +121,19 @@ public final class GameWorld implements AutoCloseable {
             }
             case "attack" -> attack(s,d);
             case "chat" -> {
-                if(System.currentTimeMillis()-s.lastChat<1000)return;
-                s.lastChat=System.currentTimeMillis();String text=string(d,"text",120).trim();
-                if(!text.isEmpty()) for(var other:sessions) if(other.player!=null&&other.player.zone==p.zone) other.send(Map.of("type","chat","id",p.id,"name",p.name,"text",text));
+                String scope = d.has("channel") ? string(d, "channel", 5) : "map";
+                boolean global = scope.equals("world");
+                if (!global && !scope.equals("map")) throw new IllegalArgumentException("Kênh chat không hợp lệ.");
+                String message = string(d, "text", global ? 100 : 120).trim();
+                long now = System.currentTimeMillis();
+                if (message.isEmpty() || now - s.lastChat < 1000) return;
+                s.lastChat = now;
+                if (global && !ChatGlobalService.tryChargePlayerMessage(p)) return;
+                var event = Map.of("type", "chat", "channel", scope, "id", p.id, "name", p.name, "text", message);
+                for (var other : sessions) {
+                    if (other.authenticated && other.player != null && (global || other.player.zone == p.zone)) other.send(event);
+                }
+                if (global) s.send(PlayerView.stats(p));
             }
             case "portal" -> {
                 if (d.has("map") && d.get("map").getAsInt() != p.zone.map.mapId) return;
@@ -424,18 +434,37 @@ public final class GameWorld implements AutoCloseable {
         tasks.restoreStarterHomeArrival(player);
         if (MapService.gI().isHome(s.sentZone.map.mapId) && player.magicTree != null) player.magicTree.loadMagicTree();
     }
-    private void attack(WebSession s,JsonObject d) {
-        Player p=s.player;if(p.isDie())return;
+    private void attack(WebSession s,JsonObject d) throws Exception {
+        Player p=s.player;if(p.isDie() || p.newSkill.isStartSkillSpecial)return;
         int skill=bounded(d,"skill",0,26);
         var selected=p.playerSkill.skills.stream().filter(k->k.template!=null&&k.template.id==skill&&k.point>0).findFirst().orElseThrow(()->new IllegalArgumentException("Kỹ năng chưa học."));
         Mob mob=null;Player target=null;
         if(d.has("mob")) {int id=bounded(d,"mob",0,10000);mob=p.zone.mobs.stream().filter(m->m.id==id&&!m.isDie()).findFirst().orElse(null);}
         if(d.has("player")) {long id=d.get("player").getAsLong();target=p.zone.getHumanoids().stream().filter(a->a.id==id&&!a.isDie()&&a.id!=p.id).findFirst().orElse(null);}
+        if (selected.template.type == 4) {
+            int targetX = mob != null ? mob.location.x : target != null ? target.location.x : p.location.x + s.facing * selected.dx;
+            int direction = targetX == p.location.x ? s.facing : Integer.compare(targetX, p.location.x);
+            p.playerSkill.skillSelect = selected;
+            try (var msg = packet(-45, out -> {
+                out.writeByte(skill);
+                out.writeShort(p.location.x);
+                out.writeShort(p.location.y);
+                out.writeByte(direction);
+                out.writeShort(targetX);
+                out.writeShort(selected.dy);
+            })) {
+                if (SkillService.gI().useSkill(p, null, null, 20, msg.message)) {
+                    s.facing = direction;
+                    s.send(PlayerView.stats(p));
+                }
+            }
+            return;
+        }
         attack(s, selected, target, mob);
     }
     void attack(WebSession s, Skill selected, Player target, Mob mob) {
         Player p = s.player;
-        if (p.isDie()) return;
+        if (p.isDie() || p.newSkill.isStartSkillSpecial) return;
         int skill = selected.template.id;
         p.playerSkill.skillSelect = selected;
         if(mob!=null&&distance(p.location.x,p.location.y,mob.location.x,mob.location.y)>Math.max(110,selected.dx+40))return;
@@ -446,18 +475,38 @@ public final class GameWorld implements AutoCloseable {
                 || selected.template.type != 1 || selected.lastTimeUseThisSkill == lastUse) return;
         for(var other:sessions)if(other.player!=null&&other.player.zone==p.zone)other.send(Map.of("type","attack","id",p.id,"skill",skill,"x",p.location.x,"y",p.location.y,"targetX",mob!=null?mob.location.x:target!=null?target.location.x:p.location.x+s.facing*70,"targetY",mob!=null?mob.location.y:target!=null?target.location.y:p.location.y));
     }
+    static int moveSpeed(Player player) {
+        return Math.max(12, Math.min(16, player.nPoint.speed + 4));
+    }
+
     private void move(WebSession s) {
-        Player p=s.player;if(p==null||p.zone==null||p.isDie()||p.effectSkill.isHaveEffectSkill()||TransactionService.gI().check(p))return;
+        Player p=s.player;if(p==null||p.zone==null||p.isDie()||p.newSkill.isStartSkillSpecial||p.effectSkill.isHaveEffectSkill()||TransactionService.gI().check(p))return;
         var map=p.zone.map;
         if (!map.hasTerrain()) return;
-        int x=Math.max(0,Math.min(map.mapWidth-1,p.location.x+s.direction*6));
+        int x=Math.max(0,Math.min(map.mapWidth-1,p.location.x+s.direction*moveSpeed(p)));
         int y=p.location.y;
         if (map.blocksHorizontalMove(p.location.x, x, y)) x = p.location.x;
+        var entrance = map.getWaypointAt(x, y);
+        if (s.automation.approaches(entrance)) {
+            // Enter at the current height before the boundary tile changes the falling position.
+            if (x != p.location.x) PlayerService.gI().playerMove(p, x, y);
+            if (p.zone.map == map) s.automation.enterPortal(p, entrance);
+            return;
+        }
+        if (!s.automation.active() && entrance != null && !entrance.isEnter && entrance != s.autoPortalAttempt
+                && (s.direction < 0 && entrance.minX == 0 || s.direction > 0 && entrance.maxX >= map.mapWidth - 1)) {
+            if (x != p.location.x) PlayerService.gI().playerMove(p, x, y);
+            if (p.zone.map == map) {
+                s.autoPortalAttempt = entrance;
+                portal(s, entrance);
+            }
+            return;
+        }
         int ground=map.yPhysicInTop(x,Math.max(0,y-18));
         if(ground<=0)ground=map.mapHeight-48;
         boolean onGround=y>=ground-2;
-        if(s.jump&&onGround){s.velocityY=-11;s.jump=false;}
-        if(s.vertical<0&&p.nPoint.mp>0){s.velocityY=-5;if(ticks%10==0)p.nPoint.addMp(-1);}
+        if(s.jump&&onGround){s.velocityY=-16;s.jump=false;}
+        if(s.vertical<0&&p.nPoint.mp>0){s.velocityY=-6;if(ticks%10==0)p.nPoint.addMp(-1);}
         else if(s.vertical>0)s.velocityY=7;
         else s.velocityY=Math.min(10,s.velocityY+0.8);
         y+=Math.round((float)s.velocityY);
@@ -489,7 +538,7 @@ public final class GameWorld implements AutoCloseable {
                             s.awaitingAutoPong = true;
                             WebSockets.sendPing(ByteBuffer.allocate(0), s.channel, null);
                         }
-                        s.automation.update(ticks);
+                        s.automation.update();
                     }
                     move(s);
                 }

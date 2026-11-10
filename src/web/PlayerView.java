@@ -1,8 +1,11 @@
 package web;
 
 import item.Item;
+import item.Template.SkillTemplate;
 import java.util.*;
 import player.Player;
+import server.Manager;
+import skill.Skill;
 
 final class PlayerView {
     static Map<String,Object> actor(Player p) {
@@ -36,10 +39,21 @@ final class PlayerView {
     }
 
     static Object stats(Player p) {
+        Map<Byte, SkillTemplate> templates = new LinkedHashMap<>();
+        Manager.NCLASS.stream().filter(c -> c.classId == p.gender).findFirst()
+                .ifPresent(c -> c.skillTemplatess.forEach(template -> templates.put(template.id, template)));
+        Map<Byte, Skill> saved = new HashMap<>();
+        for (var skill : p.playerSkill.skills) if (skill.template != null) {
+            templates.putIfAbsent(skill.template.id, skill.template);
+            saved.put(skill.template.id, skill);
+        }
         List<Object> skills = new ArrayList<>();
-        for(var s:p.playerSkill.skills) if (s.template != null) {
-            var template=server.Manager.NCLASS.stream().filter(c->c.classId==p.gender).flatMap(c->c.skillTemplatess.stream()).filter(t->t.id==s.template.id).findFirst().orElse(s.template);
-            skills.add(Map.ofEntries(Map.entry("id",template.id),Map.entry("name",template.name==null?"Kỹ năng "+template.id:template.name),Map.entry("level",s.point),Map.entry("cooldown",s.coolDown),Map.entry("lastUse",s.lastTimeUseThisSkill),Map.entry("mana",s.manaUse),Map.entry("icon",template.iconId)));
+        for (var template : templates.values()) {
+            Skill skill = saved.get(template.id);
+            skills.add(Map.of("id", template.id, "name", Objects.toString(template.name, "Kỹ năng " + template.id),
+                    "level", skill == null ? 0 : skill.point, "cooldown", skill == null ? 0 : skill.coolDown,
+                    "lastUse", skill == null ? 0 : skill.lastTimeUseThisSkill, "mana", skill == null ? 0 : skill.manaUse,
+                    "type", template.type, "icon", template.iconId));
         }
         Map<String,Object> out = new LinkedHashMap<>();
         out.put("type", "stats"); out.put("hp",p.nPoint.hp);out.put("maxHp",p.nPoint.hpMax);out.put("mp",p.nPoint.mp);out.put("maxMp",p.nPoint.mpMax);

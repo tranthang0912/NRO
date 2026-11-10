@@ -70,6 +70,8 @@ public class Map implements Runnable {
 
     public int[][] tileMap;
     public int[] tileTop;
+    private final int[] tileLeft;
+    private final int[] tileRight;
     public int mapWidth;
     public int mapHeight;
 
@@ -86,7 +88,7 @@ public class Map implements Runnable {
 
     public Map(int mapId, String mapName, byte planetId,
             byte tileId, byte bgId, byte bgType, byte type, int[][] tileMap,
-            int[] tileTop, int zones, int maxPlayer, List<WayPoint> wayPoints) {
+            int[] tileTop, int[] tileLeft, int[] tileRight, int zones, int maxPlayer, List<WayPoint> wayPoints) {
         this.mapId = mapId;
         this.mapName = mapName;
         this.planetId = planetId;
@@ -97,6 +99,8 @@ public class Map implements Runnable {
         this.type = type;
         this.tileMap = tileMap;
         this.tileTop = tileTop;
+        this.tileLeft = tileLeft;
+        this.tileRight = tileRight;
         this.zones = new ArrayList<>();
         this.wayPoints = wayPoints;
         try {
@@ -379,6 +383,25 @@ public class Map implements Runnable {
         } catch (Exception e) {
             return y;
         }
+    }
+
+    public WayPoint getWaypointAt(int x, int y) {
+        for (WayPoint waypoint : wayPoints) {
+            if (x >= waypoint.minX && x <= waypoint.maxX && y >= waypoint.minY && y <= waypoint.maxY) return waypoint;
+        }
+        return null;
+    }
+
+    public boolean blocksHorizontalMove(int fromX, int toX, int feetY) {
+        if (fromX / SIZE == toX / SIZE) return false;
+        int[] wallTiles = toX > fromX ? tileLeft : tileRight;
+        if (wallTiles == null) return false;
+        int sampleY = Math.max(0, Math.min(mapHeight - 1, feetY - 1));
+        int tile = tileMap[sampleY / SIZE][toX / SIZE];
+        for (int wallTile : wallTiles) {
+            if (tile == wallTile) return getWaypointAt(toX, feetY) == null;
+        }
+        return false;
     }
 
     public int LastY(int cx, int cy) {

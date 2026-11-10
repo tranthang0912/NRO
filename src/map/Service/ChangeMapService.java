@@ -331,6 +331,7 @@ public class ChangeMapService {
         if (zoneJoin != null && typeSpace == TELEPORT_YARDRAT) {
             zoneJoin = checkMapCanJoinByYardart(pl, zoneJoin);
         }
+        int requiredTask = zoneJoin == null ? -1 : requiredStarterTask(zoneJoin.map.mapId);
         zoneJoin = checkMapCanJoin(pl, zoneJoin);
         if (zoneJoin != null) {
             if (pl.idNRNM != -1) {
@@ -424,7 +425,11 @@ public class ChangeMapService {
                 plX = 60;
             }
             Service.gI().resetPoint(pl, plX, pl.location.y);
-            Service.gI().sendThongBao(pl, "Bạn chưa thể đến khu vực này");
+            if (pl.getSession() instanceof web.WebSession && requiredTask > TaskService.gI().getIdTask(pl)) {
+                Service.gI().sendThongBao(pl, "Lối đi còn khóa theo tiến độ. Mở tab Nhiệm vụ để xem bước cần làm tiếp.");
+            } else {
+                Service.gI().sendThongBao(pl, "Bạn chưa thể đến khu vực này");
+            }
         }
     }
 
@@ -839,6 +844,15 @@ public class ChangeMapService {
         }
     }
 
+    private int requiredStarterTask(int mapId) {
+        return switch (mapId) {
+            case 1, 8, 15 -> ConstTask.TASK_1_0; // Đồi đầu tiên.
+            case 42, 43, 44 -> ConstTask.TASK_2_0; // Vách núi cạnh làng.
+            case 2, 9, 16 -> ConstTask.TASK_3_0; // Map kế tiếp sau nhiệm vụ đùi gà.
+            default -> -1;
+        };
+    }
+
     public Zone checkMapCanJoin(Player player, Zone zoneJoin) {
         if (zoneJoin == null) {
             return null;
@@ -851,29 +865,10 @@ public class ChangeMapService {
             return zoneJoin;
         }
 
+        if (requiredStarterTask(zoneJoin.map.mapId) > TaskService.gI().getIdTask(player)) return null;
+
         if (zoneJoin != null) {
             switch (zoneJoin.map.mapId) {
-                case 1: //đồi hoa cúc
-                case 8: //đồi nấm tím
-                case 15: //đồi hoang
-                    if (TaskService.gI().getIdTask(player) < ConstTask.TASK_1_0) {
-                        return null;
-                    }
-                    break;
-                case 42: //vách aru
-                case 43: //vách moori
-                case 44: //vách kakarot
-                    if (TaskService.gI().getIdTask(player) < ConstTask.TASK_2_0) {
-                        return null;
-                    }
-                    break;
-                case 2: //thung lũng tre
-                case 9: //thị trấn moori
-                case 16: //làng plane
-                    if (TaskService.gI().getIdTask(player) < ConstTask.TASK_3_0) {
-                        return null;
-                    }
-                    break;
                 case 24: //trạm tàu vũ trụ trái đất
                 case 25: //trạm tàu vũ trụ namếc
                 case 26: //trạm tàu vũ trụ xayda

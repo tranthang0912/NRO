@@ -74,6 +74,7 @@ Không cần tạo thêm Render Postgres nếu tiếp tục dùng Aiven hiện c
 | Chọn quái / người chơi | Bấm vào nhân vật trên map | Chạm vào nhân vật |
 | Đánh | J; phím 1–9 và 0 chọn kỹ năng đã gán trong tab Kỹ năng | ĐÁNH hoặc chạm ô kỹ năng |
 | NPC / lối đi | Đến gần, nhấn E hoặc bấm nút tương tác | Nút E / nút hiện trên map |
+| Lối ở mép map | Đi tiếp tới sát mép để tự chuyển map | Giữ nút hướng tới sát mép hoặc chạm mũi tên khi đã đứng trong cửa |
 | Nhặt đồ | F | Chạm vật phẩm / nút Nhặt |
 | Ăn đậu | R | ĐẬU |
 | Hành trang | I | Nút Hành trang |

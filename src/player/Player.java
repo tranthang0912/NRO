@@ -376,10 +376,7 @@ public class Player implements Runnable {
                         activeEffects.entrySet().removeIf(entry -> System.currentTimeMillis() >= entry.getValue());
                         this.spreadEffectToNearbyPlayers();
                     }
-                    if (this.isPl() && this.zone != null && this.zone.map.mapId == this.gender + 21 && (TaskService.gI().getIdTask(this) == ConstTask.TASK_0_0 || TaskService.gI().getIdTask(this) == ConstTask.TASK_0_1)) {
-                        this.playerTask.taskMain.index = 2;
-                        TaskService.gI().sendTaskMain(this);
-                    }
+                    TaskService.gI().restoreStarterHomeArrival(this);
                 }
                 if ((this.zone != null && !MapService.gI().isHome(this.zone.map.mapId)) || (!this.isPl() && this.zone == null)) {
                     if (isPl() && idMark != null && idMark.isBan() && Util.canDoWithTime(idMark.getLastTimeBan(), 5000)) {

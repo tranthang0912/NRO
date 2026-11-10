@@ -28,12 +28,7 @@ public class MapService {
     }
 
     public WayPoint getWaypointPlayerIn(Player player) {
-        for (WayPoint wp : player.zone.map.wayPoints) {
-            if (player.location.x >= wp.minX && player.location.x <= wp.maxX && player.location.y >= wp.minY && player.location.y <= wp.maxY) {
-                return wp;
-            }
-        }
-        return null;
+        return player.zone.map.getWaypointAt(player.location.x, player.location.y);
     }
 
     /**

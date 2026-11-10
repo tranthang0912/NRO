@@ -153,12 +153,15 @@ public final class Manager {
     }
     private void initMap() {
        int[][] tileTyleTop = readTileIndexTileType(ConstMap.TILE_TOP);
+       int[][] tileLeft = readTileIndexTileType(ConstMap.TILE_LEFT);
+       int[][] tileRight = readTileIndexTileType(ConstMap.TILE_RIGHT);
        for (MapTemplate mapTemp : MAP_TEMPLATES) {
         int[][] tileMap = readTileMap(mapTemp.id);
         int[] tileTop = tileTyleTop[mapTemp.tileId - 1];
         map.Map map = new map.Map(
         mapTemp.id, mapTemp.name, mapTemp.planetId, mapTemp.tileId,
         mapTemp.bgId, mapTemp.bgType, mapTemp.type, tileMap, tileTop,
+        tileLeft[mapTemp.tileId - 1], tileRight[mapTemp.tileId - 1],
         mapTemp.zones, mapTemp.maxPlayerPerZone, mapTemp.wayPoints
         );
         MAPS.add(map);

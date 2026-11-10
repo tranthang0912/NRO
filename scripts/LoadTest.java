@@ -12,7 +12,8 @@ public class LoadTest {
                 bot.send(Map.of("type","register","username","ld"+suffix+i,"password",password,"name","ld"+suffix+i,"gender",0,"invite",""));
                 long id=bot.waitFor("joined",15).get("id").getAsLong();
                 var start=bot.waitFor("map",5);
-                var home=SmokeTest.walkThrough(bot,id,start,21);
+                if(start.get("id").getAsInt()!=39)throw new AssertionError("Incorrect Earth starting map");
+                var home=SmokeTest.walkOutOfStarter(bot,21);
                 SmokeTest.walkThrough(bot,id,home,0);
             }
             for(var b:bots){b.queue.clear();b.measuring=true;}

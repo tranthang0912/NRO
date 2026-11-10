@@ -96,14 +96,25 @@ public final class GameWorld implements AutoCloseable {
         if(TransactionService.gI().check(p)&&!Set.of("trade","tradeView","chat","inventory","logout","move").contains(type))throw new IllegalArgumentException("Hãy kết thúc giao dịch trước.");
         switch(type) {
             case "logout" -> remove(s);
-            case "move" -> {s.direction=bounded(d,"x",-1,1);s.vertical=bounded(d,"y",-1,1);s.jump=d.has("jump")&&d.get("jump").getAsBoolean();if(s.direction!=0)s.facing=s.direction;}
+            case "move" -> {
+                int direction = bounded(d, "x", -1, 1);
+                if (direction != s.facing) s.autoPortalAttempt = null;
+                s.direction = direction;
+                s.vertical = bounded(d, "y", -1, 1);
+                s.jump = d.has("jump") && d.get("jump").getAsBoolean();
+                if (direction != 0) s.facing = direction;
+            }
             case "attack" -> attack(s,d);
             case "chat" -> {
                 if(System.currentTimeMillis()-s.lastChat<1000)return;
                 s.lastChat=System.currentTimeMillis();String text=string(d,"text",120).trim();
                 if(!text.isEmpty()) for(var other:sessions) if(other.player!=null&&other.player.zone==p.zone) other.send(Map.of("type","chat","id",p.id,"name",p.name,"text",text));
             }
-            case "portal" -> portal(s,bounded(d,"index",0,p.zone.map.wayPoints.size()-1));
+            case "portal" -> {
+                if (d.has("map") && d.get("map").getAsInt() != p.zone.map.mapId) return;
+                var waypoint = p.zone.map.wayPoints.get(bounded(d, "index", 0, p.zone.map.wayPoints.size() - 1));
+                portal(s, waypoint);
+            }
             case "npc" -> {
                 int id=bounded(d,"id",0,1000);
                 if(p.zone.map.getNpc(p,id)==null)throw new IllegalArgumentException("Hãy đến gần NPC.");
@@ -326,6 +337,7 @@ public final class GameWorld implements AutoCloseable {
                     online++;
                     WebPersistence.accountLogin(s.userId, s.ipAddress);
                     joined(s);
+                    sendZone(s);
                     s.send(PlayerView.inventory(p));s.send(PlayerView.stats(p));
                     s.notice("Chào " + p.name + "!");
                 } catch(Exception e){s.notice(e.getMessage());System.err.println("Player login failure: "+e.getMessage());if(s.player!=null)remove(s);}
@@ -364,16 +376,30 @@ public final class GameWorld implements AutoCloseable {
     }
 
     private void requireBox(Player p) { if(!MapService.gI().isHome(p.zone.map.mapId))throw new IllegalArgumentException("Hãy về nhà để sử dụng rương."); }
-    private void portal(WebSession s,int index) {
-        Player p=s.player;var wp=p.zone.map.wayPoints.get(index);
-        if (MapService.gI().getWaypointPlayerIn(p) != wp) {
+    private void portal(WebSession s, map.WayPoint waypoint) {
+        Player p = s.player;
+        if (MapService.gI().getWaypointPlayerIn(p) != waypoint) {
             throw new IllegalArgumentException("Hãy đi vào lối chuyển khu vực.");
         }
+        var oldZone = p.zone;
         ChangeMapService.gI().changeMapWaypoint(p);
-        s.sentZone = null;
         s.direction = s.vertical = 0;
         s.velocityY = 0;
         s.jump = false;
+        if (p.zone != oldZone) {
+            s.autoPortalAttempt = null;
+            sendZone(s);
+        }
+    }
+
+    private void sendZone(WebSession s) {
+        var player = s.player;
+        s.send(GameCatalog.map(player.zone.map));
+        s.sentZone = player.zone;
+        var tasks = services.TaskService.gI();
+        tasks.checkDoneTaskGoToMap(player, s.sentZone);
+        tasks.restoreStarterHomeArrival(player);
+        if (MapService.gI().isHome(s.sentZone.map.mapId) && player.magicTree != null) player.magicTree.loadMagicTree();
     }
     private void attack(WebSession s,JsonObject d) {
         Player p=s.player;if(p.isDie())return;
@@ -394,8 +420,10 @@ public final class GameWorld implements AutoCloseable {
     private void move(WebSession s) {
         Player p=s.player;if(p==null||p.zone==null||p.isDie()||p.effectSkill.isHaveEffectSkill()||TransactionService.gI().check(p))return;
         var map=p.zone.map;
+        if (!map.hasTerrain()) return;
         int x=Math.max(0,Math.min(map.mapWidth-1,p.location.x+s.direction*6));
         int y=p.location.y;
+        if (map.blocksHorizontalMove(p.location.x, x, y)) x = p.location.x;
         int ground=map.yPhysicInTop(x,Math.max(0,y-18));
         if(ground<=0)ground=map.mapHeight-48;
         boolean onGround=y>=ground-2;
@@ -407,6 +435,12 @@ public final class GameWorld implements AutoCloseable {
         if(y>=ground&&s.velocityY>=0){y=ground;s.velocityY=0;}
         y=Math.max(48,Math.min(map.mapHeight-25,y));
         if(x!=p.location.x||y!=p.location.y)PlayerService.gI().playerMove(p,x,y);
+        if (p.zone.map != map || !((s.direction < 0 && x == 0) || (s.direction > 0 && x == map.mapWidth - 1))) return;
+        var waypoint = MapService.gI().getWaypointPlayerIn(p);
+        if (waypoint != null && !waypoint.isEnter && waypoint != s.autoPortalAttempt) {
+            s.autoPortalAttempt = waypoint;
+            portal(s, waypoint);
+        }
     }
     private void tickSafely() {
         if(stopping)return;
@@ -436,11 +470,7 @@ public final class GameWorld implements AutoCloseable {
             if(ticks%2==0){
                 Map<map.Zone,String> snapshots=new HashMap<>();
                 for(var s:sessions)if(s.connected&&s.authenticated&&s.player!=null&&s.player.zone!=null) {
-                    if(s.sentZone!=s.player.zone){
-                        s.send(GameCatalog.map(s.player.zone.map));
-                        s.sentZone=s.player.zone;
-                        if(MapService.gI().isHome(s.sentZone.map.mapId)&&s.player.magicTree!=null)s.player.magicTree.loadMagicTree();
-                    }
+                    if(s.sentZone!=s.player.zone)sendZone(s);
                     String snapshot = s.player.zone.hasPersonalItems()
                         ? JSON.toJson(PlayerView.state(s.player, online, ticks))
                         : snapshots.computeIfAbsent(s.player.zone, z -> JSON.toJson(PlayerView.state(s.player, online, ticks)));

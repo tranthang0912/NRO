@@ -2,6 +2,8 @@ package consts;
 public class ConstMap {
 
     public static final int TILE_TOP = 2;
+    public static final int TILE_LEFT = 4;
+    public static final int TILE_RIGHT = 8;
     public static final byte MAP_NORMAL = 0;
     public static final byte MAP_OFFLINE = 1;
     public static final byte MAP_DOANH_TRAI = 2;

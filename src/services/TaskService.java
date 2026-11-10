@@ -336,6 +336,14 @@ public class TaskService {
         }
     }
 
+    public void restoreStarterHomeArrival(Player player) {
+        if (player.isPl() && player.zone != null && player.zone.map.mapId == player.gender + 21
+                && (getIdTask(player) == ConstTask.TASK_0_0 || getIdTask(player) == ConstTask.TASK_0_1)) {
+            player.playerTask.taskMain.index = 2;
+            sendTaskMain(player);
+        }
+    }
+
     public void checkDoneTaskPickItem(Player player, ItemMap item) {
         if (!player.isBoss && !player.isPet && item != null && item.itemTemplate != null) {
             switch (item.itemTemplate.id) {

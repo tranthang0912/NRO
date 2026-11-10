@@ -35,3 +35,9 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Bản web đọc và lưu 10 ô phím tắt trong `skills_shortcut`. Đã gán phím `0` trên khung điện thoại, thoát và đăng nhập trên desktop để kiểm tra vị trí ô. Đòn PvP bị máy chủ từ chối không phát hiệu ứng trên máy người khác. Đòn hợp lệ lên mộc nhân vẫn giảm HP và tăng bộ đếm nhiệm vụ.
 - Đã kiểm tra hai lựa chọn khi ngã gục. Về nhà hồi 1 HP cho nhân vật thử chưa có tàu đặc biệt và giữ nguyên vàng. Hồi sinh tại chỗ ở Làng Aru trừ 500 vàng theo dịch vụ gốc.
 - Tám mục thiếu lưới địa hình có ID 78, 95, 101, 116, 121, 125, 130 và 134. Hai tệp RAR cung cấp máy chủ Java và client Windows IL2CPP. Giao diện thách đấu, danh sách bạn bè và chat riêng chưa được nối vào web. Vật lý nhảy, bay, hiệu ứng chiến đấu nâng cao, phó bản và sự kiện chưa được xác nhận khớp từng trường hợp.
+
+## Lối ra map đầu và nhiệm vụ tân thủ
+
+- Lối đi ở mép bản đồ tự kích hoạt khi đi tiếp về phía cửa và nhân vật nằm trong vùng chuyển map gốc. Cửa nằm trong map tiếp tục dùng nút tương tác, phím E hoặc bấm vào biểu tượng cửa khi đứng trong vùng đó.
+- Mũi tên chỉ lối sang map nhiệm vụ nếu map đích nối trực tiếp qua một cửa. Khi tới nhà, máy chủ gửi ngay bước Nói chuyện với NPC. Trường hợp nhân vật đã lưu trong nhà nhưng còn bước di chuyển dùng quy tắc khôi phục tân thủ của máy chủ gốc.
+- Các đồi vẫn kiểm tra mốc nhiệm vụ gốc. Thử vách cao 48 pixel ở Đồi hoa cúc với cờ va chạm trái/phải trong `tile_set_info`. Đi ngang bị chặn tại vách và nhảy qua được.

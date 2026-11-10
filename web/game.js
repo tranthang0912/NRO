@@ -416,7 +416,7 @@
     if (!me || me.dead) { root.hidden = true; $('target').hidden = true; return; }
     const npc = nearest('npc'), portal = activePortal(me), drop = nearest('drop');
     const actions = [];
-    if (portal) actions.push([`${portal.name} →`, { type: 'portal', index: portal.index }]);
+    if (portal) actions.push([`${portal.name} →`, { type: 'portal', index: portal.index, map: map.id }]);
     if (npc && distance(me, npc) <= 60) actions.push([npc.name, { type: 'npc', id: npc.id }]);
     if (drop && distance(me, drop) < 90) actions.push(['Nhặt', { type: 'pickup', id: drop.id }]);
     const signature = JSON.stringify(actions);
@@ -432,7 +432,7 @@
   function interact() {
     const me = own(); if (!me) return;
     const portal = activePortal(me), npc = nearest('npc');
-    if (portal) send({ type: 'portal', index: portal.index });
+    if (portal) send({ type: 'portal', index: portal.index, map: map.id });
     else if (npc && distance(me, npc) <= 60) send({ type: 'npc', id: npc.id });
   }
   function attack() {
@@ -484,18 +484,24 @@
   }
   function drawTaskArrow(player, time) {
     const step = task?.subtasks?.[task.index];
-    if (!player || player.dead || !step || step.npcId < 0 || step.mapId !== map.id
-      || $('npcDialog').open || Math.floor(time / 50) % 10 < 5) return;
-    const npc = map.npcs.reduce((nearest, candidate) => {
-      if (candidate.id !== step.npcId) return nearest;
-      return !nearest || Math.abs(candidate.x - player.x) < Math.abs(nearest.x - player.x) ? candidate : nearest;
-    }, null);
-    if (!npc) return;
-    const x = npc.x - cameraX, y = npc.y - cameraY;
+    if (!player || player.dead || !step || $('npcDialog').open || Math.floor(time / 50) % 10 < 5) return;
+    const starter = task.id === 0 && task.index === 0 && map.id === 39 + player.gender;
+    const destination = starter ? 21 + player.gender : step.mapId;
+    let target;
+    if (destination === map.id && step.npcId >= 0) {
+      target = map.npcs.reduce((nearest, candidate) => {
+        if (candidate.id !== step.npcId) return nearest;
+        return !nearest || Math.abs(candidate.x - player.x) < Math.abs(nearest.x - player.x) ? candidate : nearest;
+      }, null);
+    } else if (destination >= 0) {
+      target = map.portals.find(portal => portal.map === destination);
+    }
+    if (!target) return;
+    const x = target.x - cameraX, y = target.y - cameraY;
     if (x > 0 && x < width && y > 0 && y < height) return;
     const arrow = img('/classic/assets/x1/mainimage/mytexture2darrow3.png');
     if (!arrow.complete || !arrow.naturalWidth) return;
-    const dx = npc.x - player.x, dy = npc.y - player.y;
+    const dx = target.x - player.x, dy = target.y - player.y;
     const horizontal = Math.abs(dx) >= Math.abs(dy);
     const edgeX = horizontal ? dx < 0 ? 10 : width - 10 : width / 2;
     const edgeY = horizontal ? height / 2 + 10 : dy < 0 ? 10 : height - 10;
@@ -602,6 +608,15 @@
   canvas.addEventListener('pointerdown', e => {
     if (!joined || !state || !map) return;
     const rect = canvas.getBoundingClientRect(), x = (e.clientX - rect.left) / scale + cameraX, y = (e.clientY - rect.top) / scale + cameraY;
+    const portal = map.portals.find(p => Math.abs(p.x - x) <= 22 && y >= p.y - 42 && y <= p.y - 12);
+    if (portal) {
+      if (own() && activePortal(own())?.index === portal.index) {
+        send({ type: 'portal', index: portal.index, map: map.id });
+      } else {
+        toast(`Hãy đi đến sát lối vào ${portal.name}.`);
+      }
+      return;
+    }
     const hitMob = state.mobs.filter(m => !m.dead).find(m => Math.abs(m.x - x) < 30 && y > m.y - 55 && y < m.y + 18);
     if (hitMob) { selected = { kind: 'mob', id: hitMob.id }; updateContext(); return; }
     const hitNpc = map.npcs.find(n => Math.abs(n.x - x) < 30 && y > n.y - 70 && y < n.y + 10);

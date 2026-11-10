@@ -17,6 +17,7 @@ public final class WebSession extends MySession {
     long detachedUntil;
     String resumeToken;
     map.Zone sentZone;
+    map.WayPoint autoPortalAttempt;
     long lastSeen = System.currentTimeMillis();
     long lastChat;
     long lastAction;

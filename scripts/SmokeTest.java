@@ -30,6 +30,13 @@ public class SmokeTest {
         }
         return task;
     }
+    static JsonObject walkOutOfStarter(Bot bot, int home) throws Exception {
+        bot.send(Map.of("type", "move", "x", 1, "y", 0, "jump", false));
+        JsonObject map = bot.waitFor("map", 15);
+        if (map.get("id").getAsInt() != home) throw new AssertionError("Wrong starter exit: " + map.get("id"));
+        expectTask(bot, 0, 2);
+        return map;
+    }
     static JsonObject walkThrough(Bot bot,long id,JsonObject map,int destination)throws Exception {
         JsonObject portal=map.getAsJsonArray("portals").asList().stream().map(JsonElement::getAsJsonObject)
             .filter(entry->entry.get("map").getAsInt()==destination).findFirst().orElseThrow();
@@ -65,7 +72,7 @@ public class SmokeTest {
                 long id=b.waitFor("joined",20).get("id").getAsLong();
                 JsonObject start=b.waitFor("map",5);
                 if(start.get("id").getAsInt()!=39)throw new AssertionError("Incorrect Earth starting map");
-                JsonObject home=walkThrough(b,id,start,21);
+                JsonObject home=walkOutOfStarter(b,21);
                 if(i==0) {
                     var original = b.waitFor("stats", 5).getAsJsonArray("skillShortcuts");
                     if (original.size() != 10 || original.get(0).getAsInt() != 0 || original.get(9).getAsInt() != -1) {

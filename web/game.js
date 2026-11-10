@@ -6,6 +6,7 @@
   let socket, joined = false, register = false, catalog = { parts: {}, npcs: {}, items: {} };
   let tree = null, map = null, state = null, stats = null, inventory = null, ownId = 0, selected = null, selectedSkill = 0;
   let task = null;
+  let automation = 'off';
   let currentPanel = '', bagTab = 'bag', itemSelection = -1, lastFrame = performance.now(), frameTime = 0;
   let width = 960, height = 540, cameraX = 0, cameraY = 0, scale = 2, heartbeat, inputTimer, loginTimer;
   let reconnectTimer, retryCount = 0, intentionalDisconnect = false;
@@ -23,6 +24,11 @@
   function toast(text) {
     const e = element('div', text, 'toast'); $('toasts').append(e); setTimeout(() => e.remove(), 4700);
     while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
+  }
+  function setAutomation(mode) {
+    automation = mode;
+    $('autoQuest').setAttribute('aria-pressed', String(mode === 'quest'));
+    $('autoFarm').setAttribute('aria-pressed', String(mode === 'farm'));
   }
   function authReady() { clearTimeout(loginTimer); $('authSubmit').disabled = false; $('authSubmit').textContent = register ? 'Tạo nhân vật' : 'Đăng nhập'; }
   function connect() {
@@ -53,6 +59,7 @@
     ws.addEventListener('close', () => {
       if (socket !== ws) return;
       socket = null;
+      setAutomation('off');
       clearInterval(heartbeat); clearInterval(inputTimer); stopMovement(); authReady();
       $('connectionText').textContent = 'Mất kết nối'; $('connectionDot').classList.remove('on');
       if (intentionalDisconnect) { reconnectTimer = setTimeout(connect, 300); return; }
@@ -78,6 +85,7 @@
         if(sessionStorage.getItem('nro-resume')&&!joined)send({type:'resume',token:sessionStorage.getItem('nro-resume')});
         break;
       case 'joined':
+        setAutomation('off');
         joined = true; ownId = data.id; $('playerName').textContent = data.name;
         retryCount=0;clearTimeout(reconnectTimer);if(data.token)sessionStorage.setItem('nro-resume',data.token);
         $('welcome').hidden = true; $('gameUI').hidden = false; document.body.classList.add('playing');
@@ -91,6 +99,10 @@
         break;
       case 'notice':
         if (!joined) { $('authError').textContent = clean(data.text); authReady(); } else toast(clean(data.text)); break;
+      case 'automation':
+        setAutomation(data.mode);
+        if (data.reason) toast(clean(data.reason));
+        break;
       case 'map':
         map = data; state = tree = null; selected = null; actors.clear();
         stopMovement(); closePanel();
@@ -126,10 +138,11 @@
         while ($('chatLog').children.length > 40) $('chatLog').firstChild.remove(); $('chatLog').scrollTop = $('chatLog').scrollHeight;
         bubbles.set(data.id, { text: data.text, until: performance.now() + 4500 }); break;
       }
-      case 'menu': openMenu(data); break;
+      case 'menu': if (automation !== 'quest' || data.npc !== 4) openMenu(data); break;
       case 'tree': tree = data; break;
       case 'treeHarvest': if (tree) tree.peas = data.peas; break;
       case 'tutorial': {
+        if (automation === 'quest') { toast(clean(data.text)); break; }
         openDialog(clean(data.text), [button('Tiếp tục', () => $('npcDialog').close())]);
         $('npcDialog').dataset.kind = 'tutorial';
         showPortrait(data.portrait);
@@ -629,6 +642,7 @@
   document.addEventListener('keydown', e => {
     if (!joined || e.target.matches('input,select,textarea') || $('npcDialog').open) return;
     const key = e.key.toLowerCase();
+    if ((key === ' ' || key === 'enter') && e.target.closest('.auto-controls')) return;
     if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' ', 'enter'].includes(key)) e.preventDefault();
     keys.add(key);
     if (e.repeat) return;
@@ -661,6 +675,8 @@
     $('chatInput').focus();
   }
   $('openPanel').addEventListener('click', () => togglePanel('inventory'));
+  $('autoQuest').addEventListener('click', () => send({ type: 'automation', mode: automation === 'quest' ? 'off' : 'quest' }));
+  $('autoFarm').addEventListener('click', () => send({ type: 'automation', mode: automation === 'farm' ? 'off' : 'farm' }));
   $('chatToggle').addEventListener('click', () => {
     if ($('chat').hidden) openChat(); else $('chat').hidden = true;
   });

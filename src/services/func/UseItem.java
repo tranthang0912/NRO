@@ -85,8 +85,12 @@ public class UseItem {
             }
             switch (type) {
                 case ITEM_BOX_TO_BODY_OR_BAG:
+                    Item boxItem = player.inventory.itemsBox.get(index);
+                    int originalQuantity = boxItem.quantity;
                     InventoryService.gI().itemBoxToBodyOrBag(player, index);
-                    TaskService.gI().checkDoneTaskGetItemBox(player);
+                    if (player.inventory.itemsBox.get(index) != boxItem || boxItem.quantity < originalQuantity) {
+                        TaskService.gI().checkDoneTaskGetItemBox(player);
+                    }
                     break;
                 case ITEM_BAG_TO_BOX:
                     InventoryService.gI().itemBagToBox(player, index);

@@ -4,6 +4,7 @@ import com.google.gson.*;
 import database.*;
 import io.undertow.websockets.core.*;
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
 import map.Service.*;
@@ -14,6 +15,7 @@ import player.Service.*;
 import server.*;
 import services.*;
 import services.func.*;
+import skill.Skill;
 import boss.BossManager.*;
 
 /** One authoritative game loop. Devices share the same Player/Zone instances. */
@@ -93,15 +95,28 @@ public final class GameWorld implements AutoCloseable {
         if(type.equals("login")||type.equals("register")) { login(s,d,type.equals("register"));return; }
         Player p=s.player;
         if(!s.authenticated||p==null) throw new IllegalArgumentException("Hãy đăng nhập trước.");
+        if (type.equals("automation")) {
+            s.automation.setMode(string(d, "mode", 12));
+            return;
+        }
         if(TransactionService.gI().check(p)&&!Set.of("trade","tradeView","chat","inventory","logout","move").contains(type))throw new IllegalArgumentException("Hãy kết thúc giao dịch trước.");
+        if (s.automation.active() && !Set.of("move", "chat", "inventory", "clans", "tradeView").contains(type)) {
+            s.automation.stop("Đã tắt Auto khi bạn thao tác trực tiếp.");
+        }
         switch(type) {
             case "logout" -> remove(s);
             case "move" -> {
                 int direction = bounded(d, "x", -1, 1);
+                int vertical = bounded(d, "y", -1, 1);
+                boolean jump = d.has("jump") && d.get("jump").getAsBoolean();
+                if (s.automation.active()) {
+                    if (direction == 0 && vertical == 0 && !jump) return;
+                    s.automation.stop("Đã tắt Auto khi bạn điều khiển nhân vật.");
+                }
                 if (direction != s.facing) s.autoPortalAttempt = null;
                 s.direction = direction;
-                s.vertical = bounded(d, "y", -1, 1);
-                s.jump = d.has("jump") && d.get("jump").getAsBoolean();
+                s.vertical = vertical;
+                s.jump = jump;
                 if (direction != 0) s.facing = direction;
             }
             case "attack" -> attack(s,d);
@@ -145,17 +160,7 @@ public final class GameWorld implements AutoCloseable {
             case "withdraw" -> {
                 requireBox(p);
                 int index = bounded(d, "index", 0, p.inventory.itemsBox.size() - 1);
-                if (!p.inventory.itemsBox.get(index).isNotNullItem()) {
-                    throw new IllegalArgumentException("Ô rương trống.");
-                }
-                // The original transfer handler also advances the tutorial's chest objective.
-                try (var msg = packet(-40, out -> {
-                    out.writeByte(0); // Box to body or bag.
-                    out.writeByte(index);
-                })) {
-                    UseItem.gI().getItem(s, msg.message);
-                }
-                s.send(PlayerView.inventory(p));
+                withdraw(s, index);
             }
             case "use" -> {
                 int i=bounded(d,"index",0,p.inventory.itemsBag.size()-1);
@@ -169,11 +174,7 @@ public final class GameWorld implements AutoCloseable {
             }
             case "pickup" -> {
                 int id=bounded(d,"id",0,32767);var item=p.zone.getItemMapByItemMapId(id);
-                if (item != null && p.zone.isItemVisibleTo(p, item)
-                    && distance(p.location.x, p.location.y, item.x, item.y) <= 90) {
-                    ItemMapService.gI().pickItem(p, id, false);
-                    s.send(PlayerView.inventory(p));
-                }
+                pickup(s, item);
             }
             case "pea" -> UseItem.gI().eatPea(p);
             case "revive" -> {
@@ -363,7 +364,7 @@ public final class GameWorld implements AutoCloseable {
         joined(s);s.send(PlayerView.inventory(s.player));s.send(PlayerView.stats(s.player));
         s.notice("Đã kết nối lại, tiếp tục hành trình!");
     }
-    private void restoreChestObjective(Player player) {
+    void restoreChestObjective(Player player) {
         var tasks = TaskService.gI();
         if (tasks.getIdTask(player) != consts.ConstTask.TASK_0_3) return;
 
@@ -376,7 +377,29 @@ public final class GameWorld implements AutoCloseable {
     }
 
     private void requireBox(Player p) { if(!MapService.gI().isHome(p.zone.map.mapId))throw new IllegalArgumentException("Hãy về nhà để sử dụng rương."); }
-    private void portal(WebSession s, map.WayPoint waypoint) {
+    void withdraw(WebSession s, int index) throws Exception {
+        Player p = s.player;
+        requireBox(p);
+        if (!p.inventory.itemsBox.get(index).isNotNullItem()) throw new IllegalArgumentException("Ô rương trống.");
+        try (var msg = packet(-40, out -> {
+            out.writeByte(0); // Box to body or bag.
+            out.writeByte(index);
+        })) {
+            UseItem.gI().getItem(s, msg.message);
+        }
+        s.send(PlayerView.inventory(p));
+    }
+
+    void pickup(WebSession s, map.ItemMap item) {
+        Player p = s.player;
+        if (item != null && p.zone.isItemVisibleTo(p, item)
+                && distance(p.location.x, p.location.y, item.x, item.y) <= 90) {
+            ItemMapService.gI().pickItem(p, item.itemMapId, false);
+            s.send(PlayerView.inventory(p));
+        }
+    }
+
+    void portal(WebSession s, map.WayPoint waypoint) {
         Player p = s.player;
         if (MapService.gI().getWaypointPlayerIn(p) != waypoint) {
             throw new IllegalArgumentException("Hãy đi vào lối chuyển khu vực.");
@@ -405,10 +428,16 @@ public final class GameWorld implements AutoCloseable {
         Player p=s.player;if(p.isDie())return;
         int skill=bounded(d,"skill",0,26);
         var selected=p.playerSkill.skills.stream().filter(k->k.template!=null&&k.template.id==skill&&k.point>0).findFirst().orElseThrow(()->new IllegalArgumentException("Kỹ năng chưa học."));
-        p.playerSkill.skillSelect=selected;
         Mob mob=null;Player target=null;
         if(d.has("mob")) {int id=bounded(d,"mob",0,10000);mob=p.zone.mobs.stream().filter(m->m.id==id&&!m.isDie()).findFirst().orElse(null);}
         if(d.has("player")) {long id=d.get("player").getAsLong();target=p.zone.getHumanoids().stream().filter(a->a.id==id&&!a.isDie()&&a.id!=p.id).findFirst().orElse(null);}
+        attack(s, selected, target, mob);
+    }
+    void attack(WebSession s, Skill selected, Player target, Mob mob) {
+        Player p = s.player;
+        if (p.isDie()) return;
+        int skill = selected.template.id;
+        p.playerSkill.skillSelect = selected;
         if(mob!=null&&distance(p.location.x,p.location.y,mob.location.x,mob.location.y)>Math.max(110,selected.dx+40))return;
         if(target!=null&&distance(p.location.x,p.location.y,target.location.x,target.location.y)>Math.max(110,selected.dx+40))return;
         if(selected.template.type==1&&mob==null&&target==null)return;
@@ -435,7 +464,7 @@ public final class GameWorld implements AutoCloseable {
         if(y>=ground&&s.velocityY>=0){y=ground;s.velocityY=0;}
         y=Math.max(48,Math.min(map.mapHeight-25,y));
         if(x!=p.location.x||y!=p.location.y)PlayerService.gI().playerMove(p,x,y);
-        if (p.zone.map != map || !((s.direction < 0 && x == 0) || (s.direction > 0 && x == map.mapWidth - 1))) return;
+        if (s.automation.active() || p.zone.map != map || !((s.direction < 0 && x == 0) || (s.direction > 0 && x == map.mapWidth - 1))) return;
         var waypoint = MapService.gI().getWaypointPlayerIn(p);
         if (waypoint != null && !waypoint.isEnter && waypoint != s.autoPortalAttempt) {
             s.autoPortalAttempt = waypoint;
@@ -453,8 +482,17 @@ public final class GameWorld implements AutoCloseable {
             for(var s:new ArrayList<>(sessions)) {
                 if(s.detachedUntil!=0){if(System.currentTimeMillis()>s.detachedUntil)remove(s);continue;}
                 if(!s.connected||!s.channel.isOpen()){if(s.authenticated&&!s.intentionalClose){if(s.player!=null)TransactionService.gI().cancelTrade(s.player);s.connected=false;s.detachedUntil=System.currentTimeMillis()+45000;s.direction=0;s.vertical=0;}else remove(s);continue;}
-                if(System.currentTimeMillis()-s.lastSeen>(s.authenticated?120000:30000)){remove(s);continue;}
-                if(s.authenticated)move(s);
+                if(System.currentTimeMillis()-Math.max(s.lastSeen,s.lastAutoPong)>(s.authenticated?120000:30000)){remove(s);continue;}
+                if (s.authenticated) {
+                    if (s.automation.active()) {
+                        if (ticks % 400 == 0) {
+                            s.awaitingAutoPong = true;
+                            WebSockets.sendPing(ByteBuffer.allocate(0), s.channel, null);
+                        }
+                        s.automation.update(ticks);
+                    }
+                    move(s);
+                }
             }
             if(ticks%20==0) {
                 services.shenron.Shenron_Manager.gI().update();

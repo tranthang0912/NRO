@@ -24,6 +24,10 @@ Trình duyệt vẽ 33 bộ ô địa hình theo lưới map từ `SRC_NRO.rar` 
 
 Giữ mã xử lý nhân vật, ba hành tinh, bản đồ, quái, boss, nhiệm vụ, kỹ năng, trang bị, đệ tử, bang hội, nâng cấp, phó bản và giải đấu. Web có màn hình hành trang, chỉ số/kỹ năng, nhiệm vụ, NPC/cửa hàng, nâng cấp, bang hội và giao dịch giữa người chơi. Các thao tác dùng lại kiểm tra và xử lý của engine.
 
+Hai nút **Auto NV** và **Auto đánh** ở góc phải dùng được sau khi đăng nhập. **Auto NV** điều khiển nhân vật đi đến cửa đã mở, gặp NPC, đánh mục tiêu và nhặt đồ theo bước nhiệm vụ. Các bước cần lựa chọn, như tăng chỉ số hoặc gia nhập bang hội, sẽ dừng và báo để bạn thao tác. **Auto đánh** dùng đòn cơ bản để đánh quái thường trong khu hiện tại và có thể dùng đậu sẵn trong túi khi HP hoặc KI thấp.
+
+Mỗi nhân vật bật riêng một chế độ. Người trong cùng khu nhìn thấy các hành động và nhận tiến độ theo luật nhiệm vụ gốc. Bấm lại nút hoặc điều khiển nhân vật để tắt. Máy chủ xử lý Auto khi tab ở nền và kết nối vẫn mở. Sau khi thoát hoặc mất kết nối, hãy bật lại khi vào game.
+
 Đã loại khỏi bản chạy: bảng `napthe`, `payments`, `posts`, `settings`; dữ liệu quảng cáo/thông báo cũ; giao diện và đường xử lý nạp thẻ/đổi VND; quảng cáo, liên kết tải client và tích hợp thanh toán bên thứ ba. Không có endpoint Momo, webhook thu tiền hay mã quảng cáo trong web. Giữ một số trường tương thích của engine trong schema, không dùng chúng để nhận tiền. Vàng/ngọc kiếm trong game, mua bán vật phẩm và giao dịch trong game vẫn hoạt động.
 
 Không nhập tài khoản, mật khẩu, admin, nhân vật hoặc lịch sử thanh toán có sẵn trong bản MySQL. Người chơi tự tạo tài khoản mới trên web; mật khẩu lưu bằng PBKDF2 có salt. Schema mặc định là `nro_web`, không ghi vào các bảng `public` có sẵn. `b.sql` gốc được giữ tại workspace để đối chiếu, không nằm trong bộ triển khai.
@@ -106,8 +110,9 @@ Mở `http://127.0.0.1:8080`. Kiểm thử nhiều phiên thật qua WebSocket:
 $env:NRO_TEST_URL = 'http://127.0.0.1:8080'
 # DB_SCHEMA của lệnh test phải khớp với schema máy chủ đang chạy.
 java --class-path target/nro-web.jar scripts/SmokeTest.java
-javac -cp target/nro-web.jar -d .local/checks scripts/SmokeTest.java scripts/LoadTest.java
+javac -cp target/nro-web.jar -d .local/checks scripts/SmokeTest.java scripts/LoadTest.java scripts/AutomationTest.java
 java -cp 'target/nro-web.jar;.local/checks' LoadTest 35
+java -cp 'target/nro-web.jar;.local/checks' AutomationTest
 ```
 
 Các script tích hợp tạo tài khoản QA riêng và kiểm tra DB thật. Chỉ chạy khi có đủ 5 chỗ trống. Không dùng tài khoản mẫu/admin trong SQL cũ.

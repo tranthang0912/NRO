@@ -41,3 +41,11 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Lối đi ở mép bản đồ tự kích hoạt khi đi tiếp về phía cửa và nhân vật nằm trong vùng chuyển map gốc. Cửa nằm trong map tiếp tục dùng nút tương tác, phím E hoặc bấm vào biểu tượng cửa khi đứng trong vùng đó.
 - Mũi tên chỉ lối sang map nhiệm vụ nếu map đích nối trực tiếp qua một cửa. Khi tới nhà, máy chủ gửi ngay bước Nói chuyện với NPC. Trường hợp nhân vật đã lưu trong nhà nhưng còn bước di chuyển dùng quy tắc khôi phục tân thủ của máy chủ gốc.
 - Các đồi vẫn kiểm tra mốc nhiệm vụ gốc. Thử vách cao 48 pixel ở Đồi hoa cúc với cờ va chạm trái/phải trong `tile_set_info`. Đi ngang bị chặn tại vách và nhảy qua được.
+
+## Auto nhiệm vụ và Auto đánh
+
+- Năm tài khoản Trái Đất cùng chạy Auto NV trên Docker giới hạn 0,1 CPU và 512 MiB. Cả năm xuất hiện ở khu 0 của Làng Aru và từng tài khoản hoàn thành phần tân thủ, đánh đủ năm mộc nhân và báo lại ông Gôhan.
+- Đã thử chuỗi mở đầu của cả ba hành tinh, gồm đi về nhà, gặp NPC, lấy rađa và thu hoạch đậu. Một nhân vật Trái Đất thử nghiệm tự tìm đủ 10 đùi gà, báo nhiệm vụ và dừng ở bước chọn chỉ số.
+- Khi túi đầy và ô rađa đang có trang bị, tiến độ giữ ở bước lấy rađa. Giải phóng một ô cho phép Auto tiếp tục. Bước báo cáo của nhiệm vụ 11 hoàn thành khi Auto gặp NPC ở nhà theo điều kiện của engine gốc.
+- Đã thử hai nút trên Chrome desktop và mô phỏng điện thoại. Auto đánh tiếp tục trong 128 giây khi tab bị đóng băng bằng Chrome DevTools. Khi mở lại tab, sức mạnh đã tăng và điều khiển di chuyển bằng tay tắt Auto.
+- Các bài thử trên sử dụng PostgreSQL riêng. Nhiệm vụ boss, phó bản và sự kiện nâng cao chưa có một lượt chạy Auto xuyên suốt.

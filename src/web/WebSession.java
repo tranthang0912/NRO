@@ -11,7 +11,10 @@ import network.MySession;
 public final class WebSession extends MySession {
     final WebSocketChannel channel;
     final GameWorld world;
+    final WebAutomation automation;
     volatile boolean connected = true;
+    volatile boolean awaitingAutoPong;
+    volatile long lastAutoPong;
     boolean authenticated;
     boolean intentionalClose;
     long detachedUntil;
@@ -42,6 +45,7 @@ public final class WebSession extends MySession {
     boolean tradeLocked;
     public WebSession(GameWorld world, WebSocketChannel channel, String ip) {
         super(ip); this.world = world; this.channel = channel;
+        this.automation = new WebAutomation(this);
         this.version = 231; this.zoomLevel = 1; this.typeClient = 1;
         this.finishUpdate = true; this.timeWait = 0;
     }

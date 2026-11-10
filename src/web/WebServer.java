@@ -33,6 +33,13 @@ public final class WebServer {
                 @Override protected long getMaxTextBufferSize(){return 4096;}
                 @Override protected long getMaxBinaryBufferSize(){return 0;}
                 @Override protected void onFullTextMessage(WebSocketChannel ch,BufferedTextMessage message){world.receive(session,message.getData());}
+                @Override protected void onFullPongMessage(WebSocketChannel ch, BufferedBinaryMessage message) throws IOException {
+                    super.onFullPongMessage(ch, message);
+                    if (session.awaitingAutoPong) {
+                        session.lastAutoPong = System.currentTimeMillis();
+                        session.awaitingAutoPong = false;
+                    }
+                }
                 @Override protected void onError(WebSocketChannel ch,Throwable error){world.disconnected(session);try{ch.close();}catch(IOException ignored){}}
             });
             channel.addCloseTask(ch->world.disconnected(session));

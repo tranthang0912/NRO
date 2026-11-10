@@ -17,3 +17,13 @@ Các bài chơi trên trình duyệt chạy tại máy phát triển với schem
 SQL chứa 30 nhiệm vụ chính và 125 bước gốc. Hai mô tả được sửa lại dấu xuống dòng. Đã thử chuỗi mở đầu ở Trái Đất, Namek và Xayda qua nút giao diện, từ gặp NPC ở nhà đến lấy rađa, thu hoạch đậu và chuyển sang nhiệm vụ tập luyện. Đã tái hiện lỗi rađa trên bản web cũ và xác nhận mở lại rương khôi phục tiến độ của nhân vật đó. Bảng nhiệm vụ dùng bố cục tên, các bước rồi đến mô tả như client gốc, với cỡ chữ và thao tác cho trình duyệt. Nhiệm vụ gắn với nạp tiền được bỏ theo yêu cầu.
 
 Đã hoàn thành bước đánh 5 mộc nhân, báo ông Gôhan và nhận nhiệm vụ tìm đùi gà. Vật phẩm xuất hiện theo điều kiện nhiệm vụ của từng nhân vật theo quy tắc máy chủ gốc.
+
+## Kết nối và tải 5 người
+
+Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên Chrome độc lập, gồm ba desktop và hai mô phỏng điện thoại, cùng nhìn thấy đủ năm nhân vật ở khu 0 của Làng Aru. Một phiên di chuyển bằng cảm ứng và phiên khác nhận vị trí mới. Tải lại trang khôi phục đúng nhân vật và năm lần thoát đều giải phóng chỗ.
+
+- Năm tài khoản cùng di chuyển 120 giây trên Docker giới hạn 0,1 CPU và 512 MiB, kết nối Aiven PostgreSQL qua TLS. Trong 6.049 mẫu, khoảng cách giữa hai bản cập nhật là 100 ms ở phân vị 95, tối đa 200 ms. Không phiên nào ngắt kết nối, tổng dữ liệu gửi đi khoảng 76,7 KiB/s.
+- Khi PostgreSQL giữ khóa tài khoản trong 2,4 giây, khoảng cách lớn nhất giữa hai bản cập nhật của người còn lại giảm từ 2.405 ms xuống 101 ms. Đã thử khóa khi đăng nhập và khi thoát.
+- Đã kiểm tra đăng nhập lại trong khi còn bản lưu chưa ghi, ngắt WebSocket trong lúc đăng nhập, bấm nút đăng nhập liên tiếp và mời giao dịch khi thông tin lần đăng nhập còn chờ ghi.
+- Nhân vật lưu tại bản đồ thiếu dữ liệu địa hình được đưa về nhà đúng hành tinh. Các bản đồ thiếu địa hình bị chặn khi chuyển map trên web.
+- Bài thử tích hợp xác nhận giới hạn 5 người, nối lại sau khi ngắt mạng, lời thoại và nhiệm vụ mở đầu, chat, giao dịch, đánh mộc nhân và vị trí lưu trên PostgreSQL. Năm bài kiểm thử Maven đều đạt.

@@ -955,6 +955,12 @@ public class ClanService {
     }
 
     public void close() {
+        if (web.WebConfig.ENABLED) {
+            for (Clan clan : Manager.CLANS) {
+                clan.update();
+            }
+            return;
+        }
         PreparedStatement ps;
         try (Connection con = DatabaseManager.getConnection();) {
             ps = con.prepareStatement("update clan set slogan = ?, img_id = ?, power_point = ?, max_member = ?, clan_point = ?, level = ?, members = ?, name_2 = ?, tops = ? where id = ?");

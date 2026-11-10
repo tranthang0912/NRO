@@ -156,7 +156,13 @@ public class SuperRankDAO {
 
     public static void loadData(Player player) {
         try {
-            DatabaseResultSet rs = DatabaseManager.executeQuery("SELECT * FROM super_rank WHERE player_id = " + player.id);
+            loadData(player, DatabaseManager.executeQuery("SELECT * FROM super_rank WHERE player_id = ?", player.id));
+        } catch (Exception ignored) {
+        }
+    }
+
+    static void loadData(Player player, DatabaseResultSet rs) {
+        try {
             if (rs.first()) {
                 player.superRank.rank = rs.getInt("rank");
                 player.superRank.lastPKTime = rs.getLong("last_pk_time");

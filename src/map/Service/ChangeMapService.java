@@ -322,31 +322,30 @@ public class ChangeMapService {
             Service.gI().sendThongBao(pl, "Không thể chuyển map quá nhanh khi đeo Ngọc Rồng Namếc");
             return;
         }
-        if (pl.idNRNM != -1 && zoneJoin != null) {
-            int idNRNM = pl.idNRNM;
-            NgocRongNamecService.gI().mapNrNamec[idNRNM - 353] = zoneJoin.map.mapId;
-            NgocRongNamecService.gI().nameNrNamec[idNRNM - 353] = zoneJoin.map.mapName;
-            NgocRongNamecService.gI().zoneNrNamec[idNRNM - 353] = (byte) zoneJoin.zoneId;
-            NgocRongNamecService.gI().pNrNamec[idNRNM - 353] = pl.name;
-            NgocRongNamecService.gI().idpNrNamec[idNRNM - 353] = (int) pl.id;
-            pl.lastTimePickNRNM = System.currentTimeMillis();
-        }
-
-        if (pl.idNRNM != -1 && !NgocRongNamecService.gI().isMapNRNM(zoneJoin.map.mapId)) {
-            NgocRongNamecService.gI().dropNamekBall(pl);
-        }
-
         TransactionService.gI().cancelTrade(pl);
         if (zoneJoin == null) {
             if (mapId != -1) {
                 zoneJoin = MapService.gI().getMapCanJoin(pl, mapId, zoneId);
             }
         }
-        if (typeSpace == TELEPORT_YARDRAT) {
+        if (zoneJoin != null && typeSpace == TELEPORT_YARDRAT) {
             zoneJoin = checkMapCanJoinByYardart(pl, zoneJoin);
         }
         zoneJoin = checkMapCanJoin(pl, zoneJoin);
         if (zoneJoin != null) {
+            if (pl.idNRNM != -1) {
+                if (NgocRongNamecService.gI().isMapNRNM(zoneJoin.map.mapId)) {
+                    int index = pl.idNRNM - 353;
+                    NgocRongNamecService.gI().mapNrNamec[index] = zoneJoin.map.mapId;
+                    NgocRongNamecService.gI().nameNrNamec[index] = zoneJoin.map.mapName;
+                    NgocRongNamecService.gI().zoneNrNamec[index] = (byte) zoneJoin.zoneId;
+                    NgocRongNamecService.gI().pNrNamec[index] = pl.name;
+                    NgocRongNamecService.gI().idpNrNamec[index] = (int) pl.id;
+                    pl.lastTimePickNRNM = System.currentTimeMillis();
+                } else {
+                    NgocRongNamecService.gI().dropNamekBall(pl);
+                }
+            }
             boolean currMapIsCold = MapService.gI().isMapCold(pl.zone.map);
             boolean nextMapIsCold = MapService.gI().isMapCold(zoneJoin.map);
             boolean nextMapIsMabu = MapService.gI().isMapMaBu(zoneJoin.map.mapId);
@@ -844,7 +843,8 @@ public class ChangeMapService {
         if (zoneJoin == null) {
             return null;
         }
-        if (zoneJoin.map.mapId == -1 || zoneJoin.map.mapId == -1) {
+        if (zoneJoin.map.mapId == -1
+                || (player.getSession() instanceof web.WebSession && !zoneJoin.map.hasTerrain())) {
             return null;
         }
         if (player.isPet || player.isBoss || player.getSession() != null && player.isAdmin()) {

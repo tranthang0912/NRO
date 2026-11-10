@@ -16,7 +16,7 @@ public final class WebSession extends MySession {
     boolean intentionalClose;
     long detachedUntil;
     String resumeToken;
-    int sentMap = -1;
+    map.Zone sentZone;
     long lastSeen = System.currentTimeMillis();
     long lastChat;
     long lastAction;
@@ -70,7 +70,7 @@ public final class WebSession extends MySession {
         this.isAdmin=old.isAdmin; this.actived=old.actived; this.goldBar=old.goldBar; this.gold=old.gold;
         this.eventPoint=old.eventPoint; this.itemsReward=old.itemsReward; this.dataReward=old.dataReward;
         this.is_gift_box=old.is_gift_box; this.bdPlayer=old.bdPlayer; this.vip=old.vip; this.luotquay=old.luotquay;
-        this.authenticated=true; this.joinedGame=true; this.sentMap=-1; this.facing=old.facing;
+        this.authenticated=true; this.joinedGame=true; this.sentZone=null; this.facing=old.facing;
         this.player.setSession(this);
     }
     void notice(String text) { send(java.util.Map.of("type", "notice", "text", java.util.Objects.toString(text,"Thao tác chưa thực hiện được."))); }

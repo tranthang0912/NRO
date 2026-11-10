@@ -80,20 +80,23 @@ public class TransactionService implements Runnable {
                             if (action == SEND_INVITE_TRADE) {
                                 if (Util.canDoWithTime(pl.idMark.getLastTimeTrade(), TIME_DELAY_TRADE)
                                         && Util.canDoWithTime(plMap.idMark.getLastTimeTrade(), TIME_DELAY_TRADE)) {
-                                    boolean checkLogout1 = false;
-                                    boolean checkLogout2 = false;
-                                    try (Connection con = DatabaseManager.getConnection()) {
-                                        checkLogout1 = PlayerDAO.checkLogout(con, pl);
-                                        checkLogout2 = PlayerDAO.checkLogout(con, plMap);
-                                    } catch (Exception e) {
-                                    }
-                                    if (checkLogout1) {
-                                        Client.gI().kickSession(pl.getSession());
-                                        break;
-                                    }
-                                    if (checkLogout2) {
-                                        Client.gI().kickSession(plMap.getSession());
-                                        break;
+                                    // The web world already validates both live sessions before dispatch.
+                                    if (!(pl.getSession() instanceof web.WebSession)) {
+                                        boolean checkLogout1 = false;
+                                        boolean checkLogout2 = false;
+                                        try (Connection con = DatabaseManager.getConnection()) {
+                                            checkLogout1 = PlayerDAO.checkLogout(con, pl);
+                                            checkLogout2 = PlayerDAO.checkLogout(con, plMap);
+                                        } catch (Exception e) {
+                                        }
+                                        if (checkLogout1) {
+                                            Client.gI().kickSession(pl.getSession());
+                                            break;
+                                        }
+                                        if (checkLogout2) {
+                                            Client.gI().kickSession(plMap.getSession());
+                                            break;
+                                        }
                                     }
                                     pl.idMark.setLastTimeTrade(System.currentTimeMillis());
                                     pl.idMark.setPlayerTradeId((int) plMap.id);

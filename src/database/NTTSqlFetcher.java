@@ -63,18 +63,7 @@ public class NTTSqlFetcher {
         try {
             rs = DatabaseManager.executeQuery("select * from account where username = ? and password = ?", session.uu, session.pp);
             if (rs.first()) {
-                session.userId = rs.getInt("account.id");
-                session.isAdmin = rs.getBoolean("is_admin");
-                session.lastTimeLogout = rs.getTimestamp("last_time_logout").getTime();
-                session.actived = rs.getBoolean("active");
-                session.goldBar = rs.getInt("account.thoi_vang");
-                session.luotquay = rs.getInt("account.luotquay");
-                session.gold = rs.getLong("account.vang");
-                session.eventPoint = rs.getInt("account.event_point");
-                session.bdPlayer = rs.getDouble("account.bd_player");
-                session.vnd = rs.getInt("vnd");
-                session.tongnap = rs.getInt("tongnap");
-                session.vip = rs.getInt("vip");
+                readAccountFields(session, rs);
                 long lastTimeLogin = rs.getTimestamp("last_time_login").getTime();
                 int secondsPass1 = (int) ((System.currentTimeMillis() - lastTimeLogin) / 1000);
                 long lastTimeLogout = rs.getTimestamp("last_time_logout").getTime();
@@ -141,6 +130,36 @@ public class NTTSqlFetcher {
     }
 
 
+    private static void readAccountFields(MySession session, DatabaseResultSet rs) throws Exception {
+        session.userId = rs.getInt("account.id");
+        session.isAdmin = rs.getBoolean("is_admin");
+        session.lastTimeLogout = rs.getTimestamp("last_time_logout").getTime();
+        session.actived = rs.getBoolean("active");
+        session.goldBar = rs.getInt("account.thoi_vang");
+        session.luotquay = rs.getInt("account.luotquay");
+        session.gold = rs.getLong("account.vang");
+        session.eventPoint = rs.getInt("account.event_point");
+        session.bdPlayer = rs.getDouble("account.bd_player");
+        session.vnd = rs.getInt("vnd");
+        session.tongnap = rs.getInt("tongnap");
+        session.vip = rs.getInt("vip");
+    }
+
+    // Web workers prefetch detached rows. Construct the player on the game thread
+    // because the legacy loader also resolves in-memory clans, maps and templates.
+    public static Player loadWebPlayer(MySession session, DatabaseResultSet account,
+            DatabaseResultSet row, DatabaseResultSet rank) throws Exception {
+        readAccountFields(session, account);
+        Player player = loadPlayer(row, false, rank);
+        if (player != null) {
+            long createdAt = account.getTimestamp("create_time").getTime();
+            player.isPlayer = true;
+            player.deltaTime = (int) ((System.currentTimeMillis() - createdAt) / 1000);
+            player.isNewMember = !Util.isTimeDifferenceGreaterThanNDays(createdAt, 35);
+        }
+        return player;
+    }
+
     public static Player loadById(long id) {
         Player player = null;
         DatabaseResultSet rs = null;
@@ -165,6 +184,10 @@ public class NTTSqlFetcher {
     }
 
     private static Player loadPlayer(DatabaseResultSet rs, boolean isOffline) throws Exception {
+        return loadPlayer(rs, isOffline, null);
+    }
+
+    private static Player loadPlayer(DatabaseResultSet rs, boolean isOffline, DatabaseResultSet rank) throws Exception {
         Player player = null;
         try {
             int plHp;
@@ -1025,7 +1048,8 @@ public class NTTSqlFetcher {
 
             } catch (Exception e) {
             }
-            SuperRankDAO.loadData(player);
+            if (rank == null) SuperRankDAO.loadData(player);
+            else SuperRankDAO.loadData(player, rank);
 
             if (Util.isAfterMidnight(player.superRank.lastPKTime)) {
                 if (player.superRank.ticket < 3) {

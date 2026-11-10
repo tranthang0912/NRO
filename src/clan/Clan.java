@@ -380,10 +380,16 @@ public class Clan {
 
         dataArray.clear();
 
+        String sql = "update clan set slogan = ?, img_id = ?, power_point = ?, max_member = ?, clan_point = ?, "
+                + "level = ?, members = ?, name_2 = ?, tops = ? where id = ?";
+        if (web.WebConfig.ENABLED) {
+            web.WebPersistence.saveClan(this.id, sql, new Object[]{this.slogan, this.imgId, this.powerPoint,
+                this.maxMember, this.capsuleClan, this.level, member, this.name2, "cc", this.id});
+            return;
+        }
         PreparedStatement ps = null;
         try (Connection con = DatabaseManager.getConnection();) {
-            ps = con.prepareStatement("update clan set slogan = ?, img_id = ?, power_point = ?, max_member = ?, clan_point = ?, "
-                    + "level = ?, members = ?, name_2 = ?, tops = ? where id = ?");
+            ps = con.prepareStatement(sql);
             ps.setString(1, this.slogan);
             ps.setInt(2, this.imgId);
             ps.setLong(3, this.powerPoint);

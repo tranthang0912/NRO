@@ -27,6 +27,8 @@ public final class GameWorld implements AutoCloseable {
     private final Set<WebSession> sessions = new HashSet<>();
     private final Map<String,WebSession> resumeTokens = new HashMap<>();
     private final Map<String, long[]> authAttempts = new HashMap<>();
+    private final Set<String> authenticating = new HashSet<>();
+    private final Map<String, Long> recentlyLoggedOut = new HashMap<>();
     private final ArrayBlockingQueue<Runnable> commands = new ArrayBlockingQueue<>(256);
     private long ticks;
     volatile long lastTick = System.currentTimeMillis();
@@ -45,10 +47,10 @@ public final class GameWorld implements AutoCloseable {
     }
     boolean enqueue(Runnable r) { return !stopping && commands.offer(r); }
     void connected(WebSession s) {
-        enqueue(() -> {
+        if (!enqueue(() -> {
             if (sessions.size() >= 16) { s.notice("Máy chủ đủ kết nối, hãy thử lại sau."); s.disconnect(); return; }
             sessions.add(s); s.send(Map.of("type","hello","maxPlayers",WebConfig.MAX_PLAYERS,"online",online));
-        });
+        })) s.disconnect();
     }
     void disconnected(WebSession s) { enqueue(() -> {
         if(!sessions.contains(s))return;
@@ -63,8 +65,9 @@ public final class GameWorld implements AutoCloseable {
         s.intentionalClose=true;
         if(s.resumeToken!=null)resumeTokens.remove(s.resumeToken);
         if (s.player != null) {
-            Player p=s.player;
+            long playerId=s.player.id;
             Client.gI().kickSession(s);
+            recentlyLoggedOut.put(s.uu, playerId);
             s.player=null;
         }
         s.disconnect();
@@ -258,37 +261,58 @@ public final class GameWorld implements AutoCloseable {
         long[] attempts=authAttempts.computeIfAbsent(s.getIP(),k->new long[]{now,0});
         if(now-attempts[0]>60000){attempts[0]=now;attempts[1]=0;}
         if(++attempts[1]>12){s.notice("Quá nhiều lần đăng nhập. Hãy chờ một phút.");return;}
-        String user=string(d,"username",20),password=string(d,"password",72);
+        String user=string(d,"username",20).trim().toLowerCase(Locale.ROOT),password=string(d,"password",72);
         String name=register?string(d,"name",10):"";
         int gender=register?bounded(d,"gender",0,2):0;
         String invite=d.has("invite")?string(d,"invite",128):"";
+        recentlyLoggedOut.values().removeIf(id -> !WebPersistence.playerSavePending(id));
+        if (recentlyLoggedOut.containsKey(user)) {
+            s.notice("Đang lưu nhân vật. Hãy thử đăng nhập lại sau ít giây.");
+            return;
+        }
+        if (!authenticating.add(user)) {
+            s.notice("Máy chủ đang xử lý đăng nhập, hãy thử lại.");
+            return;
+        }
+        boolean wasInGame = sessions.stream().anyMatch(other -> other.authenticated && user.equals(other.uu));
         s.busySending=true;
         try {
-            auth.authenticate(user,password,register,name,gender,invite).whenComplete((result,error)->enqueue(()->{
+            auth.authenticate(user,password,register,name,gender,invite).whenCompleteAsync((result,error)->{
                 s.busySending=false;
-                if(!sessions.contains(s)||!s.connected)return;
+                authenticating.remove(user);
+                if(stopping||!sessions.contains(s)||!s.connected||!s.channel.isOpen()||s.authenticated)return;
                 if(error!=null){Throwable cause=error;while(cause.getCause()!=null)cause=cause.getCause();s.notice(cause instanceof IllegalArgumentException?cause.getMessage():"Không thể đăng nhập, hãy thử lại.");return;}
                 try {
                     if(online>=WebConfig.MAX_PLAYERS)throw new IllegalArgumentException("Máy chủ đủ người.");
-                    if(Client.gI().getPlayerByUser(result.accountId())!=null)throw new IllegalArgumentException("Tài khoản đang chơi trên thiết bị khác.");
-                    s.uu=result.username();s.pp=result.hash();
-                    Player p=NTTSqlFetcher.login(s,new AntiLogin());
+                    if(wasInGame||Client.gI().getPlayerByUser(result.accountId())!=null)throw new IllegalArgumentException("Tài khoản đang chơi hoặc vừa thoát. Hãy thử lại.");
+                    if (WebPersistence.playerChangedSince(result.playerId(), result.saveVersion())) {
+                        s.notice("Đang lưu nhân vật. Hãy thử đăng nhập lại sau ít giây.");
+                        return;
+                    }
+                    s.uu=result.username();
+                    Player p=NTTSqlFetcher.loadWebPlayer(s,result.account(),result.player(),result.rank());
                     if(p==null)throw new IllegalArgumentException("Không tải được nhân vật. Hãy kiểm tra tài khoản hoặc thử lại.");
                     s.player=p;p.setSession(s);p.setClothes.setup();p.nPoint.calPoint();
                     if(p.zone==null)p.zone=MapService.gI().getMapById(39 + p.gender).zones.get(0);
+                    if (!p.zone.map.hasTerrain()) {
+                        p.zone = MapService.gI().getMapById(21 + p.gender).zones.get(0);
+                        p.location.x = 200;
+                        p.location.y = p.zone.map.yPhysicInTop(200, 100);
+                    }
                     // All normal maps have one shared zone. Never create per-device copies.
                     if(!MapService.gI().isMapPhoBan(p.zone.map.mapId))p.zone=p.zone.map.zones.get(0);
                     p.location.x=Math.max(0,Math.min(p.zone.map.mapWidth-1,p.location.x));
                     p.location.y=Math.max(0,Math.min(p.zone.map.mapHeight-1,p.location.y));
                     p.zone.addPlayer(p);p.idMark.setLoadedAllDataPlayer(true);
                     Client.gI().put(p);s.joinedGame=true;s.authenticated=true;
-                    s.pp=null;online++;
+                    online++;
+                    WebPersistence.accountLogin(s.userId, s.ipAddress);
                     joined(s);
                     s.send(PlayerView.inventory(p));s.send(PlayerView.stats(p));
                     s.notice("Chào " + p.name + "!");
                 } catch(Exception e){s.notice(e.getMessage());System.err.println("Player login failure: "+e.getMessage());if(s.player!=null)remove(s);}
-            }));
-        } catch(RejectedExecutionException e){s.busySending=false;s.notice("Máy chủ đang xử lý đăng nhập, hãy thử lại.");}
+            }, loop);
+        } catch(RejectedExecutionException e){authenticating.remove(user);s.busySending=false;s.notice("Máy chủ đang xử lý đăng nhập, hãy thử lại.");}
     }
     private void joined(WebSession s) {
         byte[] token=new byte[32];new java.security.SecureRandom().nextBytes(token);
@@ -328,7 +352,7 @@ public final class GameWorld implements AutoCloseable {
             throw new IllegalArgumentException("Hãy đi vào lối chuyển khu vực.");
         }
         ChangeMapService.gI().changeMapWaypoint(p);
-        s.sentMap = -1;
+        s.sentZone = null;
         s.direction = s.vertical = 0;
         s.velocityY = 0;
         s.jump = false;
@@ -392,10 +416,10 @@ public final class GameWorld implements AutoCloseable {
             if(ticks%2==0){
                 Map<map.Zone,String> snapshots=new HashMap<>();
                 for(var s:sessions)if(s.connected&&s.authenticated&&s.player!=null&&s.player.zone!=null) {
-                    if(s.sentMap!=s.player.zone.map.mapId){
-                        s.sentMap=s.player.zone.map.mapId;
+                    if(s.sentZone!=s.player.zone){
                         s.send(GameCatalog.map(s.player.zone.map));
-                        if(MapService.gI().isHome(s.sentMap)&&s.player.magicTree!=null)s.player.magicTree.loadMagicTree();
+                        s.sentZone=s.player.zone;
+                        if(MapService.gI().isHome(s.sentZone.map.mapId)&&s.player.magicTree!=null)s.player.magicTree.loadMagicTree();
                     }
                     String snapshot = s.player.zone.hasPersonalItems()
                         ? JSON.toJson(PlayerView.state(s.player, online, ticks))
@@ -420,7 +444,7 @@ public final class GameWorld implements AutoCloseable {
     static Packet packet(int command,Writer writer)throws Exception {var bytes=new ByteArrayOutputStream();try(var out=new DataOutputStream(bytes)){writer.write(out);}return new Packet(new Message((byte)command,bytes.toByteArray()));}
     @Override public void close() {
         ready=false;
-        try {loop.submit(()->{stopping=true;for(var s:new ArrayList<>(sessions))remove(s);}).get(5,TimeUnit.SECONDS);}
+        try {loop.submit(()->{stopping=true;for(var s:new ArrayList<>(sessions))remove(s);player.Service.ClanService.gI().close();}).get(5,TimeUnit.SECONDS);}
         catch(Exception e){System.err.println("Shutdown save incomplete: "+e.getClass().getSimpleName());}
         WebPersistence.flush(20000);
         loop.shutdownNow();auth.close();

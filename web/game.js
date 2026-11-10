@@ -26,23 +26,36 @@
   }
   function authReady() { clearTimeout(loginTimer); $('authSubmit').disabled = false; $('authSubmit').textContent = register ? 'Tạo nhân vật' : 'Đăng nhập'; }
   function connect() {
+    if (socket && socket.readyState !== WebSocket.CLOSED) return;
     clearTimeout(reconnectTimer);intentionalDisconnect=false;
     clearInterval(heartbeat); clearInterval(inputTimer);
     $('connectionText').textContent = 'Đang kết nối'; $('connectionDot').classList.remove('on');
-    socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`);
-    socket.addEventListener('open', () => {
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`);
+    socket = ws;
+    let lastMessage = performance.now();
+    ws.addEventListener('open', () => {
+      if (socket !== ws) return;
+      lastMessage = performance.now();
       $('connectionText').textContent = 'Máy chủ trực tuyến'; $('connectionDot').classList.add('on');
       $('reconnect').hidden = true; authReady();
-      heartbeat = setInterval(() => send({ type: 'ping' }), 15000);
+      heartbeat = setInterval(() => {
+        if (socket !== ws) return;
+        if (!document.hidden && performance.now() - lastMessage > 35000) ws.close();
+        else send({ type: 'ping' });
+      }, 15000);
       inputTimer = setInterval(() => { if (joined) sendMovement(); }, 100);
     });
-    socket.addEventListener('message', event => {
+    ws.addEventListener('message', event => {
+      if (socket !== ws) return;
+      lastMessage = performance.now();
       try { receive(JSON.parse(event.data)); } catch (e) { console.error('Không đọc được dữ liệu game', e); }
     });
-    socket.addEventListener('close', () => {
+    ws.addEventListener('close', () => {
+      if (socket !== ws) return;
+      socket = null;
       clearInterval(heartbeat); clearInterval(inputTimer); stopMovement(); authReady();
       $('connectionText').textContent = 'Mất kết nối'; $('connectionDot').classList.remove('on');
-      if (intentionalDisconnect) return;
+      if (intentionalDisconnect) { reconnectTimer = setTimeout(connect, 300); return; }
       if (joined || sessionStorage.getItem('nro-resume')) {
         $('reconnect').hidden = false; joined = false;
         if(retryCount<6){
@@ -53,7 +66,10 @@
       }
       else $('authError').textContent = 'Máy chủ đã ngắt kết nối. Bấm Vào thế giới để kết nối lại.';
     });
-    socket.addEventListener('error', () => { $('connectionText').textContent = 'Không kết nối được'; authReady(); });
+    ws.addEventListener('error', () => {
+      if (socket !== ws) return;
+      $('connectionText').textContent = 'Không kết nối được'; authReady();
+    });
   }
   function receive(data) {
     switch (data.type) {
@@ -569,7 +585,22 @@
   });
   $('closePanel').addEventListener('click', closePanel);
   $('revive').addEventListener('click', () => send({ type: 'revive' }));
-  function logout() {intentionalDisconnect=true;sessionStorage.removeItem('nro-resume');clearTimeout(reconnectTimer);send({ type: 'logout' }); joined = false; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = stats = task = null; actors.clear(); closePanel(); $('chat').hidden = true; setTimeout(connect, 300); }
+  function logout() {
+    intentionalDisconnect = true;
+    sessionStorage.removeItem('nro-resume');
+    clearTimeout(reconnectTimer);
+    send({ type: 'logout' });
+    joined = false;
+    $('gameUI').hidden = true;
+    $('welcome').hidden = false;
+    document.body.classList.remove('playing');
+    state = map = stats = task = null;
+    actors.clear();
+    closePanel();
+    $('chat').hidden = true;
+    if (socket) socket.close();
+    else reconnectTimer = setTimeout(connect, 300);
+  }
   $('reconnectButton').addEventListener('click', () => { $('reconnect').hidden = true; $('gameUI').hidden = true; $('welcome').hidden = false; document.body.classList.remove('playing'); state = map = null; actors.clear(); connect(); });
   $('fullscreen').addEventListener('click', () => { const operation = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); operation?.catch(() => toast('Trình duyệt chưa hỗ trợ toàn màn hình.')); });
   function authTab(value) { register = value; $('registerFields').hidden = !value; $('characterName').required = value; $('password').autocomplete = value ? 'new-password' : 'current-password'; $('loginTab').classList.toggle('active', !value); $('registerTab').classList.toggle('active', value); $('loginTab').setAttribute('aria-selected', !value); $('registerTab').setAttribute('aria-selected', value); $('authError').textContent = ''; authReady(); }

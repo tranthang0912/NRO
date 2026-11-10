@@ -110,6 +110,10 @@ public class Map implements Runnable {
         this.initTrapMap();
     }
 
+    public boolean hasTerrain() {
+        return tileMap != null && mapWidth > 0 && mapHeight > 0;
+    }
+
     private void initZone(int nZone, int maxPlayer) {
         if (web.WebConfig.ENABLED) { nZone = 1; maxPlayer = web.WebConfig.MAX_PLAYERS; }
         switch (this.type) {

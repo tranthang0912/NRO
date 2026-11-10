@@ -69,7 +69,8 @@ public class Client implements Runnable {
         if (session.joinedGame) {
             session.joinedGame = false;
             try {
-                DatabaseManager.executeUpdate("update account set last_time_logout = ? where id = ?", new Timestamp(System.currentTimeMillis()), session.userId);
+                if (session instanceof web.WebSession) web.WebPersistence.accountLogout(session.userId);
+                else DatabaseManager.executeUpdate("update account set last_time_logout = ? where id = ?", new Timestamp(System.currentTimeMillis()), session.userId);
             } catch (Exception e) {
                 Logger.logException(Client.class, e);
             }

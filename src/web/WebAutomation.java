@@ -245,6 +245,7 @@ final class WebAutomation {
             switch (WebQuestActions.train(player, id)) {
                 case PROGRESSED -> { resumeWork(); lastProgress = now; }
                 case NEED_POTENTIAL -> grind(player);
+                case NEED_POWER_LIMIT -> waitFor("Auto NV đang chờ mở giới hạn Sức mạnh để kiếm thêm tiềm năng.");
                 case AT_LIMIT -> waitFor("Auto NV đang chờ nhân vật đủ giới hạn chỉ số để làm nhiệm vụ.");
             }
             return;

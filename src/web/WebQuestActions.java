@@ -20,7 +20,7 @@ import static consts.ConstTask.TASK_27_0;
 import static consts.ConstTask.TASK_27_1;
 
 final class WebQuestActions {
-    enum Training { PROGRESSED, NEED_POTENTIAL, AT_LIMIT }
+    enum Training { PROGRESSED, NEED_POTENTIAL, NEED_POWER_LIMIT, AT_LIMIT }
 
     static final int DETECTOR = 379;
     static final int DETECTOR_SHOP_MAP = 102;
@@ -64,16 +64,19 @@ final class WebQuestActions {
     }
 
     private static Training trainStarter(NPoint points) {
+        boolean canEarnPotential = points.power <= points.getPowerLimit();
         if (points.dameg > 0 && points.dameg < points.getDameLimit()) {
-            if (points.tiemNang < damageCost(points.dameg, 1)) return Training.NEED_POTENTIAL;
-            points.increasePoint(DAMAGE, (short) 1);
-            return Training.PROGRESSED;
+            if (points.tiemNang >= damageCost(points.dameg, 1)) {
+                points.increasePoint(DAMAGE, (short) 1);
+                return Training.PROGRESSED;
+            }
+            if (canEarnPotential) return Training.NEED_POTENTIAL;
         }
         long hpCost = points.hpg + 20L <= points.getHpMpLimit() ? points.hpg + 1000L : Long.MAX_VALUE;
         long kiCost = points.mpg + 20L <= points.getHpMpLimit() ? points.mpg + 1000L : Long.MAX_VALUE;
         long cost = Math.min(hpCost, kiCost);
         if (cost == Long.MAX_VALUE) return Training.AT_LIMIT;
-        if (points.tiemNang < cost) return Training.NEED_POTENTIAL;
+        if (points.tiemNang < cost) return canEarnPotential ? Training.NEED_POTENTIAL : Training.NEED_POWER_LIMIT;
         points.increasePoint(cost == hpCost ? HP : KI, (short) 1);
         return Training.PROGRESSED;
     }

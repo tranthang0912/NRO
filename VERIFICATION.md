@@ -8,4 +8,6 @@ Kiểm tra ngày 09/11/2026 trên Docker giới hạn 512 MiB RAM và 0,5 CPU, v
 - Ngắt kết nối rồi nối lại cùng nhân vật. Thoát và đăng nhập lại khôi phục vị trí đã ghi vào PostgreSQL.
 - Chromium desktop 1240 × 700 và mô phỏng điện thoại 390 × 740. Kiểm tra đăng ký, NPC, chuyển map, ô trang bị, các tab, đăng nhập lại và di chuyển cảm ứng. Ảnh chụp trong thư mục `verification`.
 
-Đây là kiểm thử tại máy phát triển. Địa hình thiếu ảnh gốc được ghép bằng ô từ các dải ảnh có sẵn. Chưa đối chiếu toàn bộ hiệu ứng, phó bản và nhiệm vụ với client Windows, hoặc thử bằng 5 thiết bị vật lý qua Internet.
+Bản cập nhật ngày 10/11/2026 đối chiếu từng pixel của 909 ô ảnh gốc trong 33 atlas và kiểm tra bảng 33 dáng ghép đầu, thân, chân. Bảng lớp nền bao phủ 30 tổ hợp `bgId` và `bgType` của 160 map trong dữ liệu, kèm vị trí riêng cho map 103. Kiểm tra lại màn hình desktop và điện thoại, chuyển qua ba map đầu Trái Đất, mở NPC, hành trang và điều khiển cảm ứng.
+
+Các bài chơi trên trình duyệt chạy tại máy phát triển với schema thử nghiệm. Các hiệu ứng đặc biệt, phó bản và nhiệm vụ nâng cao còn cần đối chiếu từng trường hợp với client Windows. Kiểm thử 5 tài khoản dùng các kết nối riêng trên máy phát triển.

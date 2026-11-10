@@ -75,7 +75,7 @@
       case 'notice':
         if (!joined) { $('authError').textContent = clean(data.text); authReady(); } else toast(clean(data.text)); break;
       case 'map':
-        map = ClassicScene.prepare(data); state = tree = null; selected = null; actors.clear();
+        map = data; state = tree = null; selected = null; actors.clear();
         stopMovement(); closePanel();
         $('mapName').textContent = data.name;
         if ($('npcDialog').dataset.kind !== 'tutorial') $('npcDialog').close(); break;
@@ -85,7 +85,7 @@
         $('mapName').textContent = `${map.name} · Khu ${data.zone}`;
         $('onlineCount').textContent = `${data.online}/5`;
         const present = new Set();
-        for (const a of data.players) { present.add(a.id); const old = actors.get(a.id); actors.set(a.id, { ...a, px: old?.px ?? a.x, py: old?.py ?? a.y, moving: old ? old.x !== a.x : false }); }
+        for (const a of data.players) { present.add(a.id); const old = actors.get(a.id); actors.set(a.id, { ...a, px: old?.px ?? a.x, py: old?.py ?? a.y, moving: old ? old.x !== a.x : false, vertical: old ? Math.sign(a.y - old.y) : 0 }); }
         for (const id of actors.keys()) if (!present.has(id)) actors.delete(id);
         if (selected?.kind === 'mob') { const m = state.mobs.find(m => m.id === selected.id); if (!m || m.dead) selected = null; }
         if (selected?.kind === 'player' && !actors.has(selected.id)) selected = null;
@@ -412,14 +412,6 @@
       label(p.name, x, y - 35, 'yellow');
     }
   }
-  function spritePart(id, frame) {
-    const parts = catalog.parts[id];
-    const part = parts?.[frame]?.[0] > 0 ? parts[frame] : parts?.find(part => part[0] > 0);
-    if (!part) return null;
-    const picture = img(iconUrl(part[0]));
-    return picture.complete && picture.naturalWidth ? { picture, dx: part[1], dy: part[2] } : null;
-  }
-
   function drawNpc(npc) {
     if (![3, 4].includes(npc.id)) {
       drawActor({ ...npc, id: `npc${npc.id}`, facing: 1 });
@@ -441,23 +433,15 @@
   function drawActor(a) {
     const x = (a.px ?? a.x) - cameraX, y = (a.py ?? a.y) - cameraY;
     if (x < -80 || x > width + 80 || y < -80 || y > height + 80) return;
-    const walking = a.moving && !a.dead, frame = walking ? 1 + Math.floor(frameTime / 100) % 5 : 0;
     const shadow = img('/classic/assets/x1/mainimage/mytexture2dbong.png');
     if (shadow.complete && shadow.naturalWidth) ctx.drawImage(shadow, Math.round(x - shadow.naturalWidth / 2), Math.round(y - 3));
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y));
     if (a.dead) { ctx.globalAlpha = .6; ctx.rotate(-Math.PI / 2); }
     if (a.facing < 0) ctx.scale(-1, 1);
-    let bottom = 0;
-    for (const part of [spritePart(a.leg, frame), spritePart(a.body, frame), spritePart(a.head, 0)]) {
-      if (!part) continue;
-      const { picture, dx, dy } = part;
-      const top = bottom - picture.naturalHeight;
-      ctx.drawImage(picture, -Math.floor(picture.naturalWidth / 2) + dx, top + Math.max(-2, Math.min(2, dy)));
-      bottom = top + 2;
-    }
+    const top = ClassicActors.draw(ctx, img, catalog.parts, a.dead ? { ...a, moving: false, vertical: 0 } : a, frameTime);
     ctx.restore();
-    if (a.name) label(a.name, x, y + Math.min(-30, bottom - 4), a.id === ownId ? 'yellow' : a.boss ? 'red' : 'white');
+    if (a.name) label(a.name, x, y + top - 4, a.id === ownId ? 'yellow' : a.boss ? 'red' : 'white');
     const bubble = bubbles.get(a.id); if (bubble && bubble.until > frameTime) {
       const text = bubble.text.length > 35 ? bubble.text.slice(0, 35) + '…' : bubble.text;
       ctx.font = '8px Segoe UI'; const w = ctx.measureText(text).width + 12; ctx.fillStyle = '#f2efda'; ctx.fillRect(x - w / 2, y - 79, w, 15); ctx.fillStyle = '#203a29'; ctx.textAlign = 'center'; ctx.fillText(text, x, y - 68);
@@ -582,5 +566,6 @@
   $('username').value = localStorage.getItem('nro-username') || '';
   fetch('/api/status').then(r => { if (!r.ok) throw Error('status'); return r.json(); }).then(s => { $('onlineCount').textContent = `${s.online}/${s.maxPlayers}`; $('inviteField').hidden = !s.inviteRequired; }).catch(() => { $('connectionText').textContent = 'Đang khởi động'; });
   fetch('/api/catalog').then(r => { if (!r.ok) throw Error('catalog'); return r.json(); }).then(c => { catalog = c; }).catch(() => toast('Chưa tải được dữ liệu hình ảnh. Hãy tải lại trang.'));
+  Promise.all([ClassicActors.ready, ClassicScene.ready]).catch(error => toast(error.message));
   window.addEventListener('resize', resize); resize(); connect(); requestAnimationFrame(draw);
 })();

@@ -18,7 +18,7 @@ Không thể bảo đảm không ngắt kết nối khi mạng thiết bị mấ
 
 Khung HP/KI, logo, nút, font pixel và sprite lấy từ tài nguyên gốc. Bảng nhân vật mở bằng tên ở góc trái hoặc phím I, có các tab nhiệm vụ, hành trang, kỹ năng, bang hội và chức năng. Hộp thoại NPC hiển thị lời thoại do server gửi.
 
-Các dải ô địa hình có sẵn được vẽ theo bố cục map gốc. Với những dải ô còn thiếu, trình duyệt dùng ô tương ứng từ bộ ảnh gốc có sẵn, nên một số cảnh và hoạt ảnh được tái dựng gần đúng.
+Trình duyệt vẽ 33 bộ ô địa hình theo lưới map từ `SRC_NRO.rar` và chọn lớp ảnh nền theo cặp `bgId` và `bgType`. Ảnh nền và bộ ô chỉ tải khi vào map cần dùng. Thứ tự các lớp nền và 33 dáng ghép sprite lấy từ client trong `Mod_Local.rar`. Hoạt ảnh cơ bản dùng bảng gốc. Một số hiệu ứng chiến đấu, thời tiết và hoạt ảnh đặc biệt vẫn được tái dựng gần đúng.
 
 ## Gameplay và các phần được lược bỏ
 

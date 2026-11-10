@@ -483,9 +483,9 @@ public final class GameWorld implements AutoCloseable {
             }
             return;
         }
-        attack(s, selected, target, mob);
+        attack(s, selected, target, mob, false);
     }
-    void attack(WebSession s, Skill selected, Player target, Mob mob) {
+    void attack(WebSession s, Skill selected, Player target, Mob mob, boolean questBasicAttack) {
         Player p = s.player;
         if (p.isDie() || p.newSkill.isStartSkillSpecial) return;
         int skill = selected.template.id;
@@ -494,8 +494,9 @@ public final class GameWorld implements AutoCloseable {
         if(target!=null&&distance(p.location.x,p.location.y,target.location.x,target.location.y)>Math.max(110,selected.dx+40))return;
         if(selected.template.type==1&&mob==null&&target==null)return;
         long lastUse = selected.lastTimeUseThisSkill;
-        if (!SkillService.gI().useSkill(p,target,mob,-1,null)
-                || selected.template.type != 1 || selected.lastTimeUseThisSkill == lastUse) return;
+        var skills = SkillService.gI();
+        boolean used = questBasicAttack ? skills.useQuestBasicAttack(p, target, mob) : skills.useSkill(p, target, mob, -1, null);
+        if (!used || selected.template.type != 1 || selected.lastTimeUseThisSkill == lastUse) return;
         for(var other:sessions)if(other.player!=null&&other.player.zone==p.zone)other.send(Map.of("type","attack","id",p.id,"skill",skill,"x",p.location.x,"y",p.location.y,"targetX",mob!=null?mob.location.x:target!=null?target.location.x:p.location.x+s.facing*70,"targetY",mob!=null?mob.location.y:target!=null?target.location.y:p.location.y));
     }
     static int moveSpeed(Player player) {

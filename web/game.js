@@ -125,7 +125,7 @@
         for (const id of actors.keys()) if (!present.has(id)) actors.delete(id);
         if (selected?.kind === 'mob') { const m = state.mobs.find(m => m.id === selected.id); if (!m || m.dead) selected = null; }
         if (selected?.kind === 'player' && !actors.has(selected.id)) selected = null;
-        $('deathActions').hidden = !actors.get(ownId)?.dead;
+        $('deathActions').hidden = automation === 'quest' || !actors.get(ownId)?.dead;
         updateContext(); break;
       }
       case 'stats':

@@ -1657,6 +1657,10 @@ public class NPoint {
         this.tiemNang += tiemNang;
     }
 
+    public long damageUpgradeCost(int amount) {
+        return amount * (2L * dameg + amount - 1) / 2 * 100;
+    }
+
     public void increasePoint(byte type, short point) {
         if (point <= 0 || point > 1000) {
             return;
@@ -1688,7 +1692,7 @@ public class NPoint {
         }
         if (type == 2) {
             TaskService.gI().checkDoneTaskNangCS(player);
-            tiemNangUse = point * (2 * this.dameg + point - 1) / 2 * 100;
+            tiemNangUse = damageUpgradeCost(point);
             if ((this.dameg + point) <= getDameLimit()) {
                 if (doUseTiemNang(tiemNangUse)) {
                     dameg += point;

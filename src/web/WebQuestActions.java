@@ -50,26 +50,13 @@ final class WebQuestActions {
             return Training.PROGRESSED;
         }
         if (points.getDameLimit() < goal) return Training.AT_LIMIT;
-        if (points.tiemNang < damageCost(points.dameg, 1)) return Training.NEED_POTENTIAL;
-
-        int low = 1;
-        int high = Math.min(MAX_TRAINING_BATCH, goal - points.dameg);
-        while (low < high) {
-            int amount = low + (high - low + 1) / 2;
-            if (damageCost(points.dameg, amount) <= points.tiemNang) low = amount;
-            else high = amount - 1;
-        }
-        points.increasePoint(DAMAGE, (short) low);
-        return Training.PROGRESSED;
+        return trainDamage(points, goal) ? Training.PROGRESSED : Training.NEED_POTENTIAL;
     }
 
     private static Training trainStarter(NPoint points) {
         boolean canEarnPotential = points.power <= points.getPowerLimit();
         if (points.dameg > 0 && points.dameg < points.getDameLimit()) {
-            if (points.tiemNang >= damageCost(points.dameg, 1)) {
-                points.increasePoint(DAMAGE, (short) 1);
-                return Training.PROGRESSED;
-            }
+            if (trainDamage(points, points.getDameLimit())) return Training.PROGRESSED;
             if (canEarnPotential) return Training.NEED_POTENTIAL;
         }
         long hpCost = points.hpg + 20L <= points.getHpMpLimit() ? points.hpg + 1000L : Long.MAX_VALUE;
@@ -81,8 +68,17 @@ final class WebQuestActions {
         return Training.PROGRESSED;
     }
 
-    private static long damageCost(int current, int amount) {
-        return amount * (2L * current + amount - 1) / 2 * 100;
+    static boolean trainDamage(NPoint points, int goal) {
+        if (points.dameg < 0 || points.dameg >= goal || points.tiemNang < points.damageUpgradeCost(1)) return false;
+        int low = 1;
+        int high = Math.min(MAX_TRAINING_BATCH, goal - points.dameg);
+        while (low < high) {
+            int amount = low + (high - low + 1) / 2;
+            if (points.damageUpgradeCost(amount) <= points.tiemNang) low = amount;
+            else high = amount - 1;
+        }
+        points.increasePoint(DAMAGE, (short) low);
+        return true;
     }
 
     static boolean checkClan(Player player) {

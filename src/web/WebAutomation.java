@@ -47,7 +47,8 @@ final class WebAutomation {
     private long lastBossSearch;
     private long retryRouteAt;
     private long retryActionAt;
-    private long lastReturnHome;
+    private long reviveAt;
+    private long retryDamageTrainingAt;
     private int objective = -1;
     private int objectiveCount = -1;
     private long objectivePower;
@@ -89,7 +90,7 @@ final class WebAutomation {
         nextLeg = null;
         transitStarted = 0;
         objective = objectiveCount = -1;
-        lastBossSearch = retryRouteAt = retryActionAt = lastReturnHome = 0;
+        lastBossSearch = retryRouteAt = retryActionAt = reviveAt = retryDamageTrainingAt = 0;
         lastProgress = System.currentTimeMillis();
         waiting = "";
         recovering = false;
@@ -105,7 +106,8 @@ final class WebAutomation {
         farmZone = old.farmZone;
         recovering = old.recovering;
         needBagSpace = old.needBagSpace;
-        lastReturnHome = old.lastReturnHome;
+        reviveAt = old.reviveAt;
+        retryDamageTrainingAt = old.retryDamageTrainingAt;
         lastProgress = System.currentTimeMillis();
         publish("");
     }
@@ -162,9 +164,10 @@ final class WebAutomation {
         session.jump = false;
         if (player.isDie()) {
             if (mode == Mode.FARM) stop("Auto đánh đã dừng vì nhân vật ngã gục trong khu treo.");
-            else recoverQuestDeath(player);
+            else reviveForQuest(player);
             return;
         }
+        reviveAt = 0;
         if (combatZone != player.zone) {
             combatZone = player.zone;
             targets.clear();
@@ -185,18 +188,28 @@ final class WebAutomation {
         previousDirection = session.direction;
     }
 
-    private void recoverQuestDeath(Player player) {
-        targets.clear();
-        long now = System.currentTimeMillis();
-        if (now - lastReturnHome < 60_000) {
-            waitFor("Nhân vật ngã gục liên tiếp. Auto NV sẽ chờ trước khi đưa nhân vật về nhà lần nữa.");
+    private void reviveForQuest(Player player) {
+        var task = player.playerTask.taskMain;
+        if (task == null || task.id == 29 || task.index >= task.subTasks.size()
+                || player.isPKDHVT || player.idNRNM != -1 || MapService.gI().isMapBlackBallWar(player.zone.map.mapId)) {
+            stop("Auto NV không thể hồi sinh ở khu vực hoặc nhiệm vụ này.");
             return;
         }
-        lastReturnHome = now;
+        long now = System.currentTimeMillis();
+        if (reviveAt == 0) {
+            reviveAt = now + 2_000;
+            resetMotion();
+            session.velocityY = 0;
+            targets.clear();
+            waitFor("Auto NV sẽ hồi sinh miễn phí tại chỗ.");
+            return;
+        }
+        if (now < reviveAt) return;
         nextLeg = null;
         lastProgress = now;
-        session.world.returnHome(player);
-        waitFor("Auto NV đã dùng lựa chọn về nhà để tiếp tục nhiệm vụ.");
+        Service.gI().hsChar(player, player.nPoint.hpMax, player.nPoint.mpMax);
+        reviveAt = now + 2_000;
+        resumeWork();
     }
 
     private void quest(Player player) throws Exception {
@@ -573,14 +586,22 @@ final class WebAutomation {
             return;
         }
         player.playerSkill.skillSelect = skill;
-        if (!readyForCombat(player)) {
+        boolean questBasicAttack = mode == Mode.QUEST;
+        if (questBasicAttack) {
+            if (player.nPoint.stamina <= 0) { waitFor("Auto NV đang chờ hồi thể lực."); return; }
+            long now = System.currentTimeMillis();
+            if (objective > TASK_3_0 && objective != TASK_27_0 && now >= retryDamageTrainingAt) {
+                retryDamageTrainingAt = now + 1_000;
+                WebQuestActions.trainDamage(player.nPoint, player.nPoint.getDameLimit());
+            }
+        } else if (!readyForCombat(player)) {
             if (player.nPoint.hp <= player.nPoint.hpMax / 4) retreat(player, target);
             return;
         }
         resumeWork();
         if (distance(player, x, y) > 78) { aim(player, x, y, 32, 42); return; }
         session.facing = x < player.location.x ? -1 : 1;
-        session.world.attack(session, skill, target, mob);
+        session.world.attack(session, skill, target, mob, questBasicAttack);
     }
 
     private boolean readyForCombat(Player player) {

@@ -48,6 +48,18 @@ public class SkillService {
     }
 
     public boolean useSkill(Player player, Player plTarget, Mob mobTarget, int status, Message msg) {
+        return useSkill(player, plTarget, mobTarget, status, msg, false);
+    }
+
+    public boolean useQuestBasicAttack(Player player, Player boss, Mob mob) {
+        if (boss != null && !boss.isBoss) return false;
+        return switch (player.playerSkill.skillSelect.template.id) {
+            case Skill.DRAGON, Skill.DEMON, Skill.GALICK -> useSkill(player, boss, mob, -1, null, true);
+            default -> false;
+        };
+    }
+
+    private boolean useSkill(Player player, Player plTarget, Mob mobTarget, int status, Message msg, boolean allowEmptyKi) {
         if (plTarget != null && player.clan != null && plTarget.clan != null && player.clan == plTarget.clan && MapService.gI().isMapBlackBallWar(plTarget.zone.map.mapId)) {
             Service.gI().chatJustForMe(player, plTarget, "Ê cùng bang mà");
             return false;
@@ -93,7 +105,7 @@ public class SkillService {
                 && player.playerSkill.skillSelect.template.id != Skill.MAKANKOSAPPO))
                 || (plTarget != null && !canAttackPlayer(player, plTarget))
                 || (mobTarget != null && mobTarget.isDie())
-                || !canUseSkillWithMana(player) || !canUseSkillWithCooldown(player)) {
+                || (!allowEmptyKi && !canUseSkillWithMana(player)) || !canUseSkillWithCooldown(player)) {
             return false;
         }
         if (player.effectSkill != null && player.effectSkill.isHaveEffectSkill() && player.effectSkill.useTroi) {

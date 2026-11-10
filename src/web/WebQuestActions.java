@@ -64,15 +64,17 @@ final class WebQuestActions {
     }
 
     private static Training trainStarter(NPoint points) {
+        if (points.dameg > 0 && points.dameg < points.getDameLimit()) {
+            if (points.tiemNang < damageCost(points.dameg, 1)) return Training.NEED_POTENTIAL;
+            points.increasePoint(DAMAGE, (short) 1);
+            return Training.PROGRESSED;
+        }
         long hpCost = points.hpg + 20L <= points.getHpMpLimit() ? points.hpg + 1000L : Long.MAX_VALUE;
         long kiCost = points.mpg + 20L <= points.getHpMpLimit() ? points.mpg + 1000L : Long.MAX_VALUE;
-        long damageCost = points.dameg > 0 && points.dameg < points.getDameLimit()
-                ? damageCost(points.dameg, 1) : Long.MAX_VALUE;
-        long cost = Math.min(hpCost, Math.min(kiCost, damageCost));
+        long cost = Math.min(hpCost, kiCost);
         if (cost == Long.MAX_VALUE) return Training.AT_LIMIT;
         if (points.tiemNang < cost) return Training.NEED_POTENTIAL;
-        byte stat = cost == damageCost ? DAMAGE : cost == hpCost ? HP : KI;
-        points.increasePoint(stat, (short) 1);
+        points.increasePoint(cost == hpCost ? HP : KI, (short) 1);
         return Training.PROGRESSED;
     }
 

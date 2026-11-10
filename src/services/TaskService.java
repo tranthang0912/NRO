@@ -60,6 +60,13 @@ public class TaskService {
         for (TaskMain tm : Manager.TASKS) {
             if (tm.id == id) {
                 TaskMain newTaskMain = new TaskMain(tm);
+                // The meteor item is placed on the village-side cliffs, not at the tutorial spawn.
+                if (id == 3) newTaskMain.subTasks.get(1).mapId = (short) (42 + player.gender);
+                if (id == 11) {
+                    var report = newTaskMain.subTasks.get(3);
+                    report.mapId = ConstTask.MAP_NHA;
+                    report.npcId = ConstTask.NPC_NHA;
+                }
                 newTaskMain.detail = transformName(player, newTaskMain.detail);
                 for (SubTaskMain stm : newTaskMain.subTasks) {
                     stm.mapId = (short) transformMapId(player, stm.mapId);
@@ -241,7 +248,7 @@ public class TaskService {
                         || doneTask(player, ConstTask.TASK_27_5));
             }
             case ConstNpc.OSIN -> {
-                return doneTask(player, ConstTask.TASK_28_0);
+                return doneTask(player, ConstTask.TASK_28_0) || doneTask(player, ConstTask.TASK_28_7);
             }
             case ConstNpc.DR_DRIEF, ConstNpc.CARGO, ConstNpc.CUI -> {
                 return player.zone.map.mapId == 19 && doneTask(player, ConstTask.TASK_17_1);

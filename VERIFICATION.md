@@ -49,3 +49,10 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Khi túi đầy và ô rađa đang có trang bị, tiến độ giữ ở bước lấy rađa. Giải phóng một ô cho phép Auto tiếp tục. Bước báo cáo của nhiệm vụ 11 hoàn thành khi Auto gặp NPC ở nhà theo điều kiện của engine gốc.
 - Đã thử hai nút trên Chrome desktop và mô phỏng điện thoại. Auto đánh tiếp tục trong 128 giây khi tab bị đóng băng bằng Chrome DevTools. Khi mở lại tab, sức mạnh đã tăng và điều khiển di chuyển bằng tay tắt Auto.
 - Các bài thử trên sử dụng PostgreSQL riêng. Nhiệm vụ boss, phó bản và sự kiện nâng cao chưa có một lượt chạy Auto xuyên suốt.
+
+### Kiểm tra lại sau phát hành
+
+- Năm phiên Chrome độc lập, gồm ba cấu hình desktop và hai cấu hình điện thoại, đều hoàn thành nhiệm vụ mộc nhân bằng Auto. Một phiên nhìn thấy cả năm nhân vật di chuyển trong cùng khu. Tải lại trang khôi phục đúng nhân vật với Auto đã tắt. Thoát game giải phóng đủ năm chỗ.
+- Đã tái hiện Auto bị kẹt ở lối Làng Mori sang Vách núi Moori. Sau khi sửa, nhân vật đi qua lối này và lối Thị trấn Moori sang Thung lũng Maima bằng thao tác di chuyển của máy chủ. Đã thử phần nhặt vật thể Sao băng và báo lại NPC trên cả ba hành tinh. Chỉ dẫn nhiệm vụ Sao băng trỏ đến vách núi có vật thể. Chỉ dẫn báo cáo nhiệm vụ 11 trỏ đến NPC ở nhà.
+- Hành trang đầy làm Auto dừng sau một lần nhặt thất bại và giữ nguyên tiến độ. Dọn một ô rồi bật lại cho phép nhặt vật thể Sao băng.
+- Bước báo cáo cuối với Ôsin chuyển sang trạng thái hoàn thành khi nói chuyện bằng tay hoặc bằng Auto. Việc vào sự kiện Ma Bư vẫn cần chọn trong menu NPC theo thời gian mở cửa của game.

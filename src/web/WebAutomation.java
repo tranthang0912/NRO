@@ -21,6 +21,7 @@ import services.TaskService;
 import services.func.TransactionService;
 import services.func.UseItem;
 import skill.Skill;
+import utils.Util;
 
 import static consts.ConstTask.*;
 
@@ -42,6 +43,7 @@ final class WebAutomation {
     private WayPoint nextPortal;
     private int previousX;
     private int previousDirection;
+    private int blockedMoves;
 
     WebAutomation(WebSession session) { this.session = session; }
 
@@ -95,6 +97,7 @@ final class WebAutomation {
         session.direction = session.vertical = previousDirection = 0;
         session.jump = false;
         session.autoPortalAttempt = null;
+        blockedMoves = 0;
     }
 
     void update(long tick) {
@@ -166,19 +169,8 @@ final class WebAutomation {
             if (atMap(player, home)) starterItem(player, id);
             return;
         }
-        if (id == TASK_11_3) {
-            if (atMap(player, home)) {
-                int parent = switch (player.gender) {
-                    case 0 -> ConstNpc.ONG_GOHAN;
-                    case 1 -> ConstNpc.ONG_MOORI;
-                    default -> ConstNpc.ONG_PARAGUS;
-                };
-                talk(player, parent);
-            }
-            return;
-        }
         if (id == TASK_3_1) {
-            if (atMap(player, 42 + player.gender) && !collect(player, 78)) stop("Chưa tìm thấy vật thể nhiệm vụ trên map.");
+            if (atMap(player, step.mapId) && !collect(player, 78)) stop("Chưa tìm thấy vật thể nhiệm vụ trên map.");
             return;
         }
         if ((id == TASK_2_0 && collect(player, 73)) || ((id == TASK_8_1 || id == TASK_8_2) && collect(player, 444))
@@ -276,7 +268,14 @@ final class WebAutomation {
         }
         if (nearest == null) return false;
         if (best <= 65) {
-            if (System.currentTimeMillis() - player.idMark.getLastTimePickItem() >= 1000) session.world.pickup(session, nearest);
+            if (Util.canDoWithTime(player.idMark.getLastTimePickItem(), 1000)) {
+                int dropId = nearest.itemMapId;
+                session.world.pickup(session, nearest);
+                if (TaskService.gI().getIdTask(player) == objective && player.zone.getItemMapByItemMapId(dropId) == nearest
+                        && InventoryService.gI().getCountEmptyBag(player) == 0) {
+                    stop("Hành trang đầy. Hãy dọn chỗ rồi bật lại Auto NV để nhặt vật phẩm nhiệm vụ.");
+                }
+            }
         } else aim(player, nearest.x, nearest.y, 12, 24);
         return true;
     }
@@ -370,7 +369,22 @@ final class WebAutomation {
             if (before == player.zone) stop("Lối đi chưa mở. Hãy xem điều kiện trong tab Nhiệm vụ.");
         } else {
             int margin = Math.max(4, (portal.maxX - portal.minX) / 2 - 2);
-            aim(player, (portal.minX + portal.maxX) / 2, (portal.minY + portal.maxY) / 2, margin, 8);
+            int x = (portal.minX + portal.maxX) / 2;
+            int y = (portal.minY + portal.maxY) / 2;
+            boolean leftEdge = portal.minX == 0;
+            boolean rightEdge = portal.maxX >= player.zone.map.mapWidth - 1;
+            if ((leftEdge || rightEdge) && Math.abs(player.location.x - x) <= margin + 48) {
+                if (player.location.y < portal.minY || player.location.y > portal.maxY) {
+                    // Adjust height from inside the map before entering a boundary tile.
+                    int approachX = leftEdge ? portal.maxX + 18 : portal.minX - 18;
+                    aim(player, approachX, y, 9, 4);
+                    return;
+                }
+                aim(player, x, y, margin, 4);
+                if (Math.abs(player.location.y - y) > 4) session.vertical = Integer.signum(y - player.location.y);
+            } else {
+                aim(player, x, y, margin, 8);
+            }
         }
     }
 
@@ -398,10 +412,12 @@ final class WebAutomation {
         int dy = y - player.location.y;
         int direction = Math.abs(dx) > xTolerance ? Integer.signum(dx) : 0;
         boolean blocked = direction != 0 && direction == previousDirection && player.location.x == previousX;
+        blockedMoves = blocked ? blockedMoves + 1 : 0;
         session.direction = direction;
         if (direction != 0) session.facing = direction;
-        if (blocked) session.jump = true;
-        if (direction == 0 && Math.abs(dy) > yTolerance) session.vertical = Integer.signum(dy);
+        if (blockedMoves >= 3 && player.nPoint.mp > 0) session.vertical = -1;
+        else if (blocked) session.jump = true;
+        else if (direction == 0 && Math.abs(dy) > yTolerance) session.vertical = Integer.signum(dy);
     }
 
     private static double distance(Player player, int x, int y) {

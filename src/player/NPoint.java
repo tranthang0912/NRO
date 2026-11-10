@@ -24,6 +24,7 @@ import java.util.List;
 import lombok.Setter;
 import mob.Mob;
 import utils.TimeUtil;
+import web.WebSession;
 
 public class NPoint {
 
@@ -1767,6 +1768,17 @@ public class NPoint {
 
     private long lastTimeHoiPhuc;
     private long lastTimeHoiStamina;
+    private long lastTimeWebKiRecovery = System.currentTimeMillis();
+
+    public void updateWebKiRecovery() {
+        if (!usesWebKiRecovery() || !Util.canDoWithTime(lastTimeWebKiRecovery, 5_000)) return;
+        lastTimeWebKiRecovery = System.currentTimeMillis();
+        if (mp < mpMax) PlayerService.gI().hoiPhuc(player, 0, Math.max(1, mpMax / 50));
+    }
+
+    private boolean usesWebKiRecovery() {
+        return player.isPl() && player.getSession() instanceof WebSession;
+    }
 
     public void update() {
         if (player != null && player.effectSkill != null) {
@@ -1798,7 +1810,8 @@ public class NPoint {
             }
 
             if (Util.canDoWithTime(lastTimeHoiPhuc, 30000)) {
-                PlayerService.gI().hoiPhuc(this.player, hpHoi, mpHoi);
+                int nativeKiRecovery = usesWebKiRecovery() ? Math.max(0, mpHoi - mpMax / 100) : mpHoi;
+                PlayerService.gI().hoiPhuc(this.player, hpHoi, nativeKiRecovery);
                 this.lastTimeHoiPhuc = System.currentTimeMillis();
             }
 

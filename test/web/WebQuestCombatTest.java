@@ -14,6 +14,7 @@ import services.SkillService;
 import skill.NClass;
 import skill.Skill;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -53,8 +54,23 @@ class WebQuestCombatTest {
         player.nPoint.mp = 0;
         assertSame(basic, combat.select(player, null, mob, basic, 75));
         player.nPoint.mp = 30;
+        assertSame(basic, combat.select(player, null, mob, basic, 75));
+        player.nPoint.mp = 230;
         assertSame(beam, combat.select(player, null, mob, basic, 75));
         assertSame(basic, player.playerSkill.skillSelect);
+    }
+
+    @Test void questBasicAttackPreservesKiAndStillUsesItsCooldown() {
+        Skill basic = learn(Skill.DRAGON, 1, 100, 32, 0, 1);
+        Mob mob = mob(1_000);
+        player.playerSkill.skillSelect = basic;
+        var skills = SkillService.gI();
+        assertTrue(skills.useSkill(player, null, mob, -1, null));
+        assertEquals(999, player.nPoint.mp);
+        basic.lastTimeUseThisSkill = 0;
+        assertTrue(skills.useQuestBasicAttack(player, null, mob));
+        assertEquals(999, player.nPoint.mp);
+        assertFalse(skills.useQuestBasicAttack(player, null, mob));
     }
 
     @Test void avoidsMeleeBeyondNativeHitDistanceAndAvoidsKaiokenAtLowHealth() {
@@ -88,14 +104,15 @@ class WebQuestCombatTest {
     @Test void keepsNativeLaserWindupBoundToTheTargetAndWaitsBeforeFiring() {
         Skill basic = learn(Skill.DEMON, 1, 100, 32, 0, 1);
         Skill laser = learn(Skill.MAKANKOSAPPO, 1, 70, 20_000, 2, 0);
-        Mob mob = mob(3_000);
-        assertSame(laser, combat.select(player, null, mob, basic, 75));
+        Player boss = boss(3_000);
+        assertSame(basic, combat.select(player, null, mob(3_000), basic, 75));
+        assertSame(laser, combat.select(player, boss, null, basic, 75));
         player.playerSkill.skillSelect = laser;
-        assertTrue(SkillService.gI().useSkill(player, null, mob, -1, null));
+        assertTrue(SkillService.gI().useSkill(player, boss, null, -1, null));
         assertTrue(player.playerSkill.prepareLaze);
-        assertNull(combat.select(player, null, mob, basic, 75));
+        assertNull(combat.select(player, boss, null, basic, 75));
         player.playerSkill.lastTimePrepareLaze -= 3_100;
-        assertSame(laser, combat.select(player, null, mob, basic, 75));
+        assertSame(laser, combat.select(player, boss, null, basic, 75));
         assertSame(basic, combat.select(player, null, mob(50), basic, 75));
         assertFalse(player.playerSkill.prepareLaze);
     }
@@ -117,15 +134,15 @@ class WebQuestCombatTest {
     @Test void releasesPreparedLaserThroughNativeDamageAndKiRules() {
         Skill basic = learn(Skill.DEMON, 1, 100, 32, 0, 1);
         Skill laser = learn(Skill.MAKANKOSAPPO, 1, 70, 20_000, 2, 0);
-        Mob mob = mob(3_000);
-        assertSame(laser, combat.select(player, null, mob, basic, 75));
+        Player boss = boss(3_000);
+        assertSame(laser, combat.select(player, boss, null, basic, 75));
         player.playerSkill.skillSelect = laser;
-        assertTrue(SkillService.gI().useSkill(player, null, mob, -1, null));
+        assertTrue(SkillService.gI().useSkill(player, boss, null, -1, null));
         player.playerSkill.lastTimePrepareLaze -= 3_100;
-        assertSame(laser, combat.select(player, null, mob, basic, 75));
-        assertTrue(SkillService.gI().useSkill(player, null, mob, -1, null));
+        assertSame(laser, combat.select(player, boss, null, basic, 75));
+        assertTrue(SkillService.gI().useSkill(player, boss, null, -1, null));
         assertFalse(player.playerSkill.prepareLaze);
-        assertTrue(mob.point.hp < 3_000);
+        assertTrue(boss.nPoint.hp < 3_000);
         assertTrue(player.nPoint.mp == 0);
     }
 
@@ -180,6 +197,15 @@ class WebQuestCombatTest {
         mob.point.sethp(hp);
         player.zone.mobs.add(mob);
         return mob;
+    }
+
+    private Player boss(int hp) {
+        Player boss = player();
+        boss.zone = player.zone;
+        boss.isBoss = true;
+        boss.typePk = ConstPlayer.PK_ALL;
+        boss.nPoint.hp = boss.nPoint.hpMax = hp;
+        return boss;
     }
 
     private static Player player() {

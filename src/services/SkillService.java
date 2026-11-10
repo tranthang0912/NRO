@@ -59,7 +59,7 @@ public class SkillService {
         };
     }
 
-    private boolean useSkill(Player player, Player plTarget, Mob mobTarget, int status, Message msg, boolean allowEmptyKi) {
+    private boolean useSkill(Player player, Player plTarget, Mob mobTarget, int status, Message msg, boolean freeBasicAttack) {
         if (plTarget != null && player.clan != null && plTarget.clan != null && player.clan == plTarget.clan && MapService.gI().isMapBlackBallWar(plTarget.zone.map.mapId)) {
             Service.gI().chatJustForMe(player, plTarget, "Ê cùng bang mà");
             return false;
@@ -105,7 +105,7 @@ public class SkillService {
                 && player.playerSkill.skillSelect.template.id != Skill.MAKANKOSAPPO))
                 || (plTarget != null && !canAttackPlayer(player, plTarget))
                 || (mobTarget != null && mobTarget.isDie())
-                || (!allowEmptyKi && !canUseSkillWithMana(player)) || !canUseSkillWithCooldown(player)) {
+                || (!freeBasicAttack && !canUseSkillWithMana(player)) || !canUseSkillWithCooldown(player)) {
             return false;
         }
         if (player.effectSkill != null && player.effectSkill.isHaveEffectSkill() && player.effectSkill.useTroi) {
@@ -120,7 +120,7 @@ public class SkillService {
         } else {
             switch (player.playerSkill.skillSelect.template.type) {
                 case 1 ->
-                    useSkillAttack(player, plTarget, mobTarget);
+                    useSkillAttack(player, plTarget, mobTarget, freeBasicAttack);
                 case 3 ->
                     useSkillAlone(player);
                 case 4 ->
@@ -370,6 +370,10 @@ public class SkillService {
     }
 
     public void useSkillAttack(Player player, Player plTarget, Mob mobTarget) {
+        useSkillAttack(player, plTarget, mobTarget, false);
+    }
+
+    private void useSkillAttack(Player player, Player plTarget, Mob mobTarget, boolean freeBasicAttack) {
         if (player.effectSkill != null && player.effectSkill.useTroi) {
             EffectSkillService.gI().removeUseTroi(player);
         }
@@ -443,7 +447,9 @@ public class SkillService {
                     player.mobMe.attack(plTarget, mobTarget, miss);
                 }
                 if (player.playerSkill != null) {
-                    affterUseSkill(player, player.playerSkill.skillSelect.template.id);
+                    int skillId = player.playerSkill.skillSelect.template.id;
+                    if (freeBasicAttack) setLastTimeUseSkill(player, skillId);
+                    else affterUseSkill(player, skillId);
                 }
                 break;
             case Skill.QUA_CAU_KENH_KHI:

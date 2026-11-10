@@ -366,6 +366,9 @@ public class Player implements Runnable {
         if (!this.beforeDispose) {
             try {
                 if (this.zone != null || (!this.isPl() && this.zone == null)) {
+                    if (this.zone != null && nPoint != null) {
+                        nPoint.updateWebKiRecovery();
+                    }
                     if (itemTime != null) {
                         itemTime.update();
                     }

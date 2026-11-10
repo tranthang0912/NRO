@@ -27,6 +27,7 @@ final class WebQuestCombat {
             if (target != preparationTarget || player.zone != preparationZone || !isPrepared(player)
                     || player.nPoint.hp <= player.nPoint.hpMax / 2
                     || distance > range(preparing) || !ready(player, preparing)
+                    || !canSpendKi(player, boss, preparing)
                     || preparing.template.id == Skill.QUA_CAU_KENH_KHI && !alone(player)) {
                 reset(player);
             } else {
@@ -54,13 +55,13 @@ final class WebQuestCombat {
         boolean basicReady = basicInRange && Util.canDoWithTime(basic.lastTimeUseThisSkill, basic.coolDown - 50);
         Skill best = basic;
         long bestHit = basicReady ? basicHit : 0;
-        long bestCost = basicReady ? kiCost(player, basic) : Long.MAX_VALUE;
+        long bestCost = basicReady ? 0 : Long.MAX_VALUE;
         for (Skill skill : player.playerSkill.skills) {
             if (skill == basic || !learned(skill)) continue;
             int id = skill.template.id;
             if (id != Skill.KAMEJOKO && id != Skill.MASENKO && id != Skill.ANTOMIC && id != Skill.LIEN_HOAN
                     && id != Skill.KAIOKEN) continue;
-            if (distance > range(skill) || !ready(player, skill)) continue;
+            if (distance > range(skill) || !ready(player, skill) || !canSpendKi(player, boss, skill)) continue;
             long hit = estimateHit(player, boss, skill);
             if (id == Skill.KAIOKEN && (player.nPoint.hp < (long) player.nPoint.hpMax * 4 / 5
                     || hp <= basicHit * 2 || hit < basicHit * 5 / 4)) continue;
@@ -166,11 +167,12 @@ final class WebQuestCombat {
 
     private Skill preparedAttack(Player player, Player boss, long hp, long basicHit, double distance) {
         if (hp < basicHit * 6 || player.nPoint.hp < (long) player.nPoint.hpMax * 3 / 4) return null;
-        if (!player.playerSkill.prepareLaze && player.nPoint.mp >= (long) player.nPoint.mpMax * 3 / 4) {
+        if (boss != null && !player.playerSkill.prepareLaze && player.nPoint.mp >= (long) player.nPoint.mpMax * 3 / 4) {
             Skill laser = usable(player, Skill.MAKANKOSAPPO, distance);
             if (laser != null && estimateHit(player, boss, laser) >= basicHit * 6) return laser;
         }
-        return !player.playerSkill.prepareQCKK && alone(player) ? usable(player, Skill.QUA_CAU_KENH_KHI, distance) : null;
+        Skill bomb = !player.playerSkill.prepareQCKK && alone(player) ? usable(player, Skill.QUA_CAU_KENH_KHI, distance) : null;
+        return bomb != null && canSpendKi(player, boss, bomb) ? bomb : null;
     }
 
     private boolean isPrepared(Player player) {
@@ -231,6 +233,11 @@ final class WebQuestCombat {
             case 2 -> player.nPoint.mp;
             default -> skill.manaUse;
         };
+    }
+
+    private static boolean canSpendKi(Player player, Player boss, Skill skill) {
+        long cost = kiCost(player, skill);
+        return boss != null || cost == 0 || player.nPoint.mp - cost >= player.nPoint.mpMax / 5;
     }
 
     private static long estimateHit(Player player, Player boss, Skill skill) {

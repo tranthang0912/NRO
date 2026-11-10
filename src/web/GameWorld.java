@@ -191,9 +191,7 @@ public final class GameWorld implements AutoCloseable {
                 if (!p.isPKDHVT) PlayerService.gI().hoiSinh(p);
             }
             case "returnHome" -> {
-                if (!p.isDie()) throw new IllegalArgumentException("Chỉ có thể về nhà bằng cách này khi đã ngã gục.");
-                int destination = MapService.gI().isMapMaBu(p.zone.map.mapId) ? 114 : p.gender + 21;
-                ChangeMapService.gI().changeMapBySpaceShip(p, destination, 0, -1);
+                returnHome(p);
             }
             case "skillShortcut" -> {
                 byte[] shortcuts = p.playerSkill.skillShortCut;
@@ -372,7 +370,32 @@ public final class GameWorld implements AutoCloseable {
         s.copyPlayerSession(old);old.player=null;old.authenticated=false;old.intentionalClose=true;
         sessions.remove(old);old.disconnect();
         joined(s);s.send(PlayerView.inventory(s.player));s.send(PlayerView.stats(s.player));
+        s.automation.restore(old.automation);
         s.notice("Đã kết nối lại, tiếp tục hành trình!");
+    }
+
+    void returnHome(Player player) {
+        if (!player.isDie()) throw new IllegalArgumentException("Chỉ có thể về nhà bằng cách này khi đã ngã gục.");
+        int destination = MapService.gI().isMapMaBu(player.zone.map.mapId) ? 114 : player.gender + 21;
+        ChangeMapService.gI().changeMapBySpaceShip(player, destination, 0, -1);
+    }
+
+    boolean mobClaimedByAnother(WebSession requester, Mob mob) {
+        for (WebSession other : sessions) {
+            if (other != requester && other.connected && other.player != null && other.player.zone == mob.zone
+                    && other.automation.claims(mob)) return true;
+        }
+        return false;
+    }
+
+    boolean tryQuestClanPair(WebSession requester) throws Exception {
+        if (!requester.automation.readyForClanPair()) return false;
+        var peers = sessions.stream().filter(other -> other != requester && other.automation.readyForClanPair())
+                .sorted(Comparator.comparingLong(other -> other.player.id)).toList();
+        for (WebSession other : peers) {
+            if (WebQuestActions.pairClans(requester.player, other.player)) return true;
+        }
+        return false;
     }
     void restoreChestObjective(Player player) {
         var tasks = TaskService.gI();

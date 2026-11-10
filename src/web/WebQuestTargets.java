@@ -2,6 +2,7 @@ package web;
 
 import boss.Boss;
 import boss.BossID;
+import boss.Cell.SieuBoHung;
 import player.Player;
 
 import static consts.ConstMob.*;
@@ -66,7 +67,7 @@ final class WebQuestTargets {
             case TASK_23_0 -> 93;
             case TASK_24_0 -> 104;
             case TASK_25_0 -> 97;
-            case TASK_26_0 -> 99;
+            case TASK_26_0 -> 100;
             case TASK_27_2 -> 103;
             default -> -1;
         };
@@ -94,19 +95,31 @@ final class WebQuestTargets {
             case TASK_26_1, TASK_26_2, TASK_26_3 -> BossID.XEN_BO_HUNG;
             case TASK_27_3 -> BossID.XEN_CON_1;
             case TASK_27_4 -> BossID.SIEU_BO_HUNG;
-            case TASK_28_1 -> BossID.DRABURA;
-            case TASK_28_2 -> BossID.BUI_BUI;
-            case TASK_28_3 -> BossID.BUI_BUI_2;
-            case TASK_28_4 -> BossID.YA_CON;
-            case TASK_28_5 -> BossID.DRABURA_2;
-            case TASK_28_6 -> BossID.MABU;
-            default -> 0;
+            default -> WebMabuQuest.floorBoss(WebMabuQuest.floor(objective));
         };
+    }
+
+    static int bossMap(int objective) {
+        return switch (objective) {
+            case TASK_24_1, TASK_24_2, TASK_24_3 -> 104;
+            case TASK_26_1, TASK_26_2, TASK_26_3 -> 100;
+            case TASK_27_3, TASK_27_4 -> 103;
+            default -> WebMabuQuest.floor(objective);
+        };
+    }
+
+    static int bossTrigger(int objective) {
+        return objective == TASK_27_3 ? BossID.SIEU_BO_HUNG : 0;
     }
 
     static boolean matchesBoss(Player target, int objective, int id) {
         if (!(target instanceof Boss boss) || boss.isDie()) return false;
-        if (objective == TASK_27_3) return boss.id <= BossID.XEN_CON_1 && boss.id >= BossID.XEN_CON_7;
+        if (objective == TASK_27_3) {
+            if (id == BossID.XEN_CON_1) return boss.id <= BossID.XEN_CON_1 && boss.id >= BossID.XEN_CON_7;
+            if (id == BossID.SIEU_BO_HUNG) {
+                return boss instanceof SieuBoHung cell && cell.currentLevel == 0 && !cell.callCellCon;
+            }
+        }
         if (boss.id != id) return false;
         return switch (id) {
             case BossID.FIDE -> boss.currentLevel == (objective - TASK_21_1) / 2;

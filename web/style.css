@@ -61,6 +61,7 @@ input, select { display: block; width: 100%; min-height: 33px; border: 1px solid
 .auto-controls { position: fixed; top: 86px; right: 8px; z-index: 3; display: flex; gap: 4px; }
 .auto-controls button { min-height: 32px; padding: 3px 7px; border: 1px solid #80592d; border-radius: 5px; background: #f5d08b; color: #593211; font-size: 11px; font-weight: bold; }
 .auto-controls button[aria-pressed="true"] { background: #437c3e; color: #fff7d8; border-color: #2d5429; }
+.auto-controls button.waiting { background: #d7a54a; color: #442b0f; border-color: #86602d; }
 .chat { position: fixed; right: 8px; top: 122px; z-index: 4; width: min(296px, calc(100vw - 16px)); max-height: calc(100dvh - 134px); overflow: auto; padding: 5px; background: #f8ecd7f5; border: 1px solid #976a3d; border-radius: 4px; }
 .chat-tabs { gap: 3px; margin-bottom: 4px; }
 .chat-tabs button { min-height: 28px; }

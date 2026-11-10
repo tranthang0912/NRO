@@ -52,7 +52,7 @@ public class NPoint {
     public int dameAfter;
 
     /*-----------------------Chỉ số cơ bản------------------------------------*/
-    public byte numAttack;
+    public short numAttack;
     public short stamina, maxStamina;
 
     public byte limitPower;

@@ -64,3 +64,11 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Đối chiếu cả 30 cấp của ba tuyệt kỹ với `src/nro.sql` trong `SRC_NRO.rar`. Đã học Super Kamejoko qua Whis bằng nhân vật thử và kích hoạt cả ba tuyệt kỹ để kiểm tra gồng, phát chiêu, trừ KI và hồi chiêu.
 - Đo tốc độ chạy cơ bản từ 120 lên 240 pixel bản đồ/giây. Thử nhảy lên 152 pixel và qua vách Đồi hoa cúc. Cả năm nhân vật chạy Auto cùng hoàn thành phần tân thủ và đánh mộc nhân sau khi tăng tốc. Hai lối ở Namek đã được thử lại.
 - Auto đã dùng NPC gốc để đi từ Trạm Trái Đất sang Trạm Namek, từ Thành phố Vegeta đến Nappa và từ nhà Bunma tương lai về Trái Đất. Các bài thử này chạy trên PostgreSQL riêng.
+
+## Auto nhiệm vụ một nút và Auto treo
+
+- Trên PostgreSQL 16 riêng, một lần bật Auto NV đủ để dùng tiềm năng, sang map có Sao băng, nhặt vật thể và quay về báo NPC. Khi túi đầy, nhân vật tự về rương nhà cất một món dư rồi quay lại làm tiếp.
+- Hai tài khoản cùng bật Auto ở bước bang hội lập chung một bang qua dịch vụ gốc. Chỉ trừ 10.000 vàng một lần và cả hai qua bước. Auto mua máy dò đúng giá 100 triệu vàng ở Bunma tương lai, sử dụng máy dò rồi sang map quái. Nhân vật ở nhà sau khi rời sự kiện Ma Bư có thể tự về Đảo Kamê báo Ôsin.
+- Auto tìm Calick, chờ chuyến tàu 60 giây, đến nhà Bunma tương lai rồi báo nhiệm vụ. Năm phiên Chrome desktop và mobile cùng hoàn thành phần tân thủ và đánh mộc nhân. Một phiên nhìn thấy cả năm nhân vật di chuyển ở khu 0 của Làng Aru. Tải lại trang giữ nguyên Auto và thoát giải phóng cả năm chỗ.
+- Auto treo giữ chế độ khi hết KI, tự đánh lại sau hồi sức và tiếp tục sau khi nối lại phiên ngắn. Điều khiển nhân vật tắt Auto. Hai bài kiểm thử Java bổ sung xác nhận Auto đổi mục tiêu khi bị kẹt và ưu tiên quái chưa được giữ.
+- Kiểm tra tuyến và điều kiện lên tầng Ma Bư riêng. Chưa chạy trọn chuỗi boss và sự kiện theo giờ từ tài khoản mới.

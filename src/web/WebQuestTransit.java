@@ -16,6 +16,8 @@ final class WebQuestTransit {
             case 24 -> station(player, map, ConstNpc.DR_DRIEF, 25, 26);
             case 25 -> station(player, map, ConstNpc.CARGO, 24, 26);
             case 26 -> station(player, map, ConstNpc.CUI, 24, 25);
+            case 84 -> hasNpc(map, ConstNpc.DR_DRIEF)
+                    ? List.of(new Trip(24 + player.gender, ConstNpc.DR_DRIEF, 0, ConstNpc.BASE_MENU)) : List.of();
             case 19 -> {
                 if (player.playerTask.taskMain.id == 7 || objective == ConstTask.TASK_17_1
                         || !hasNpc(map, ConstNpc.CUI)) yield List.of();
@@ -41,7 +43,8 @@ final class WebQuestTransit {
     private static List<Trip> station(Player player, Map map, int npcId, int first, int second) {
         if (player.playerTask.taskMain.id == 7 || !hasNpc(map, npcId)) return List.of();
         return List.of(new Trip(first, npcId, 0, ConstNpc.BASE_MENU),
-                new Trip(second, npcId, 1, ConstNpc.BASE_MENU));
+                new Trip(second, npcId, 1, ConstNpc.BASE_MENU),
+                new Trip(84, npcId, 2, ConstNpc.BASE_MENU));
     }
 
     private static List<Trip> calick(Map map, int objective) {

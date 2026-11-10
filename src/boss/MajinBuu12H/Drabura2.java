@@ -111,16 +111,11 @@ public class Drabura2 extends Boss {
                 }
             }
 
-            if (plAtt.isPl() && Util.isTrue(1, 5)) {
+            if (plAtt != null && plAtt.isPl() && Util.isTrue(1, 5)) {
                 plAtt.fightMabu.changePercentPoint((byte) 1);
             }
             if (damage >= 20000000) {
                 damage = 20000000;
-            }
-
-            if (damage >= this.nPoint.hp) {
-                this.changeStatus(BossStatus.AFK);
-                damage = 0;
             }
 
             this.nPoint.subHP(damage);
@@ -134,6 +129,14 @@ public class Drabura2 extends Boss {
         } else {
             return 0;
         }
+    }
+
+    @Override
+    public void die(Player plKill) {
+        if (plKill != null) {
+            reward(plKill);
+        }
+        this.changeStatus(BossStatus.AFK);
     }
 
     @Override

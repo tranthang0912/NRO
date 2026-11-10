@@ -26,10 +26,16 @@
     const e = element('div', text, 'toast'); $('toasts').append(e); setTimeout(() => e.remove(), 4700);
     while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
   }
-  function setAutomation(mode) {
+  function setAutomation(mode, waiting = false, reason = '') {
     automation = mode;
-    $('autoQuest').setAttribute('aria-pressed', String(mode === 'quest'));
-    $('autoFarm').setAttribute('aria-pressed', String(mode === 'farm'));
+    for (const [id, value] of [['autoQuest', 'quest'], ['autoFarm', 'farm']]) {
+      const control = $(id);
+      control.dataset.idleTitle ??= control.title;
+      const active = mode === value;
+      control.setAttribute('aria-pressed', String(active));
+      control.classList.toggle('waiting', active && waiting);
+      control.title = active && reason ? reason : control.dataset.idleTitle;
+    }
   }
   function authReady() { clearTimeout(loginTimer); $('authSubmit').disabled = false; $('authSubmit').textContent = register ? 'Tạo nhân vật' : 'Đăng nhập'; }
   function connect() {
@@ -101,7 +107,7 @@
       case 'notice':
         if (!joined) { $('authError').textContent = clean(data.text); authReady(); } else toast(clean(data.text)); break;
       case 'automation':
-        setAutomation(data.mode);
+        setAutomation(data.mode, data.waiting, clean(data.reason));
         if (data.reason) toast(clean(data.reason));
         break;
       case 'map':

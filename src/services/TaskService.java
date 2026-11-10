@@ -30,6 +30,7 @@ import utils.Util;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executors;
 import server.Client;
 import player.Service.ClanService;
@@ -45,6 +46,8 @@ public class TaskService {
      * Làm cùng số người trong bang
      */
     private static final byte NMEMBER_DO_TASK_TOGETHER = 2;
+    private static final short GINDER_MAP = 100;
+    public static final int CAPSULE_QUEST_BASE_DAMAGE = 10_000;
     private boolean canNhanCayThong = true;
 
     private static services.TaskService i;
@@ -66,6 +69,13 @@ public class TaskService {
                     var report = newTaskMain.subTasks.get(3);
                     report.mapId = ConstTask.MAP_NHA;
                     report.npcId = ConstTask.NPC_NHA;
+                }
+                if (id == 26) newTaskMain.subTasks.get(0).mapId = GINDER_MAP;
+                if (id == 27) {
+                    var training = newTaskMain.subTasks.get(0);
+                    training.name = String.format(Locale.forLanguageTag("vi-VN"),
+                            "Nâng sức đánh gốc lên %,d", CAPSULE_QUEST_BASE_DAMAGE);
+                    training.notify = training.name;
                 }
                 newTaskMain.detail = transformName(player, newTaskMain.detail);
                 for (SubTaskMain stm : newTaskMain.subTasks) {
@@ -173,11 +183,11 @@ public class TaskService {
                         || doneTask(player, ConstTask.TASK_10_2)
                         || doneTask(player, ConstTask.TASK_11_3)
                         || doneTask(player, ConstTask.TASK_12_2)
+                        || checkDoneTaskJoinClan(player)
                         || doneTask(player, ConstTask.TASK_13_1)
                         || doneTask(player, ConstTask.TASK_14_3)
                         || doneTask(player, ConstTask.TASK_15_3)
                         || doneTask(player, ConstTask.TASK_16_3))
-                        || doneTask(player, ConstTask.TASK_13_0)
                         || doneTask(player, ConstTask.TASK_22_2)
                         || doneTask(player, ConstTask.TASK_17_1)
                         || doneTask(player, ConstTask.TASK_18_5)
@@ -194,7 +204,7 @@ public class TaskService {
                         || doneTask(player, ConstTask.TASK_14_3)
                         || doneTask(player, ConstTask.TASK_15_3)
                         || doneTask(player, ConstTask.TASK_16_3)
-                        || doneTask(player, ConstTask.TASK_13_0)
+                        || checkDoneTaskJoinClan(player)
                         || doneTask(player, ConstTask.TASK_22_2)
                         || doneTask(player, ConstTask.TASK_17_1)
                         || doneTask(player, ConstTask.TASK_18_5)
@@ -211,7 +221,7 @@ public class TaskService {
                         || doneTask(player, ConstTask.TASK_14_3)
                         || doneTask(player, ConstTask.TASK_15_3)
                         || doneTask(player, ConstTask.TASK_16_3)
-                        || doneTask(player, ConstTask.TASK_13_0)
+                        || checkDoneTaskJoinClan(player)
                         || doneTask(player, ConstTask.TASK_22_2)
                         || doneTask(player, ConstTask.TASK_17_1)
                         || doneTask(player, ConstTask.TASK_18_5)
@@ -261,10 +271,10 @@ public class TaskService {
         return false;
     }
 
-    public void checkDoneTaskJoinClan(Player player) {
-        if (!player.isBoss && !player.isPet) {
-            doneTask(player, ConstTask.TASK_13_0);
-        }
+    public boolean checkDoneTaskJoinClan(Player player) {
+        var clan = player.clan;
+        return !player.isBoss && !player.isPet && clan != null && clan.getMembers().size() >= 2
+                && clan.getClanMember((int) player.id) != null && doneTask(player, ConstTask.TASK_13_0);
     }
 
     public void checkDoneTaskGetItemBox(Player player) {
@@ -336,7 +346,7 @@ public class TaskService {
                 case 93 -> doneTask(player, ConstTask.TASK_23_0);
                 case 104 -> doneTask(player, ConstTask.TASK_24_0);
                 case 97 -> doneTask(player, ConstTask.TASK_25_0);
-                case 99 -> doneTask(player, ConstTask.TASK_26_0);
+                case GINDER_MAP -> doneTask(player, ConstTask.TASK_26_0);
                 case 103 -> doneTask(player, ConstTask.TASK_27_2);
 
             }
@@ -379,7 +389,7 @@ public class TaskService {
 
     public void checkDoneTaskNangCS(Player player) {
         if (!player.isBoss && !player.isPet) {
-            if (player.nPoint.dameg < 10000) {
+            if (player.nPoint.dameg < CAPSULE_QUEST_BASE_DAMAGE) {
                 return;
             }
             doneTask(player, ConstTask.TASK_27_0);
@@ -450,7 +460,7 @@ public class TaskService {
                 case BossID.BUI_BUI_2 -> doneTask(player, ConstTask.TASK_28_3);
                 case BossID.YA_CON -> doneTask(player, ConstTask.TASK_28_4);
                 case BossID.DRABURA_2 -> doneTask(player, ConstTask.TASK_28_5);
-                case BossID.MABU -> doneTask(player, ConstTask.TASK_28_6);
+                case BossID.MABU, BossID.MABU_12H -> doneTask(player, ConstTask.TASK_28_6);
 
             }
         }

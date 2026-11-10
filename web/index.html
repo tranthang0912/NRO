@@ -53,7 +53,10 @@
       <div id="chat" class="chat" hidden><div id="chatLog" aria-live="polite"></div><form id="chatForm"><input id="chatInput" placeholder="Enter để trò chuyện…" maxlength="120" autocomplete="off" aria-label="Tin nhắn"><button aria-label="Gửi tin nhắn">↵</button></form></div>
       <div id="skills" class="skills" aria-label="Kỹ năng"></div>
       <div class="touch-controls" aria-label="Điều khiển cảm ứng"><div class="dpad"><button data-dir="up" aria-label="Bay lên">▲</button><button data-dir="left" aria-label="Sang trái">◀</button><button data-dir="down" aria-label="Xuống">▼</button><button data-dir="right" aria-label="Sang phải">▶</button></div><div class="touch-actions"><button id="touchInteract" aria-label="Tương tác">E</button><button id="touchJump" aria-label="Nhảy">↥</button><button id="touchAttack" aria-label="Tấn công">ĐÁNH</button><button id="touchPea" aria-label="Ăn đậu">ĐẬU</button></div></div>
-      <button id="revive" class="revive" hidden>Hồi sinh tại chỗ</button>
+      <div id="deathActions" class="death-actions" hidden>
+        <button id="returnHome" class="primary" type="button">Về nhà</button>
+        <button id="revive" class="primary" type="button">Hồi sinh tại chỗ</button>
+      </div>
       <aside id="panel" class="panel" aria-label="Bảng nhân vật" hidden>
         <header class="panel-heading">
           <canvas id="avatar" width="48" height="48" aria-hidden="true"></canvas>

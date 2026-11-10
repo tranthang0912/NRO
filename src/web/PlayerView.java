@@ -45,6 +45,7 @@ final class PlayerView {
         out.put("type", "stats"); out.put("hp",p.nPoint.hp);out.put("maxHp",p.nPoint.hpMax);out.put("mp",p.nPoint.mp);out.put("maxMp",p.nPoint.mpMax);
         out.put("power",p.nPoint.power);out.put("potential",p.nPoint.tiemNang);out.put("damage",p.nPoint.dame);out.put("defense",p.nPoint.def);out.put("crit",p.nPoint.crit);
         out.put("gold",p.inventory.gold);out.put("gem",p.inventory.gem);out.put("ruby",p.inventory.ruby);out.put("skills",skills);
+        out.put("skillShortcuts", p.playerSkill.skillShortCut);
         if (p.playerTask.taskMain != null) out.put("task", task(p));
         if(p.pet!=null) out.put("pet",actor(p.pet));
         if(p.clan!=null) out.put("clan",Map.of("id",p.clan.id,"name",p.clan.name));

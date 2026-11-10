@@ -72,7 +72,7 @@ Không cần tạo thêm Render Postgres nếu tiếp tục dùng Aiven hiện c
 | Đi / bay lên xuống | WASD hoặc phím mũi tên | Bàn điều hướng cảm ứng |
 | Nhảy | Space | Nút ↥ |
 | Chọn quái / người chơi | Bấm vào nhân vật trên map | Chạm vào nhân vật |
-| Đánh | J; phím 1–9 chọn kỹ năng | ĐÁNH hoặc chạm ô kỹ năng |
+| Đánh | J; phím 1–9 và 0 chọn kỹ năng đã gán trong tab Kỹ năng | ĐÁNH hoặc chạm ô kỹ năng |
 | NPC / lối đi | Đến gần, nhấn E hoặc bấm nút tương tác | Nút E / nút hiện trên map |
 | Nhặt đồ | F | Chạm vật phẩm / nút Nhặt |
 | Ăn đậu | R | ĐẬU |

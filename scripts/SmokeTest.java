@@ -67,6 +67,16 @@ public class SmokeTest {
                 if(start.get("id").getAsInt()!=39)throw new AssertionError("Incorrect Earth starting map");
                 JsonObject home=walkThrough(b,id,start,21);
                 if(i==0) {
+                    var original = b.waitFor("stats", 5).getAsJsonArray("skillShortcuts");
+                    if (original.size() != 10 || original.get(0).getAsInt() != 0 || original.get(9).getAsInt() != -1) {
+                        throw new AssertionError("Original shortcut slots not loaded: " + original);
+                    }
+                    b.queue.clear();
+                    b.send(Map.of("type", "skillShortcut", "slot", 9, "skill", 0));
+                    long shortcutEnd = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                    while (b.waitFor("stats", 5).getAsJsonArray("skillShortcuts").get(9).getAsInt() != 0) {
+                        if (System.nanoTime() > shortcutEnd) throw new AssertionError("Shortcut assignment ignored");
+                    }
                     var homeState = b.waitFor("state", 5);
                     if (homeState.getAsJsonArray("drops").asList().stream()
                         .anyMatch(drop -> drop.getAsJsonObject().get("template").getAsInt() == 74)) {
@@ -181,7 +191,10 @@ public class SmokeTest {
             first.send(Map.of("type","logout"));Thread.sleep(1000);
             database.DatabaseManager.initialize();
             try(var c=database.DatabaseManager.getConnection();var ps=c.prepareStatement("SELECT data_location FROM player WHERE id=?")){ps.setLong(1,id);try(var rs=ps.executeQuery()){rs.next();var location=JsonParser.parseString(rs.getString(1)).getAsJsonArray();if(location.get(1).getAsInt()!=savedX)throw new AssertionError("Position not saved to PostgreSQL: "+location+" expected x="+savedX);}}
-            try(Bot reconnect=new Bot()){reconnect.waitFor("hello",5);reconnect.send(Map.of("type","login","username","qa"+suffix+"0","password",password));var joined=reconnect.waitFor("joined",15);if(joined.get("id").getAsLong()!=id)throw new AssertionError("Character identity lost");var restored=reconnect.waitFor("state",5);var p=restored.getAsJsonArray("players").asList().stream().map(JsonElement::getAsJsonObject).filter(j->j.get("id").getAsLong()==id).findFirst().orElseThrow();if(p.get("x").getAsInt()!=savedX)throw new AssertionError("Position not restored");}
+            try(Bot reconnect=new Bot()){reconnect.waitFor("hello",5);reconnect.send(Map.of("type","login","username","qa"+suffix+"0","password",password));var joined=reconnect.waitFor("joined",15);if(joined.get("id").getAsLong()!=id)throw new AssertionError("Character identity lost");var restored=reconnect.waitFor("state",5);var p=restored.getAsJsonArray("players").asList().stream().map(JsonElement::getAsJsonObject).filter(j->j.get("id").getAsLong()==id).findFirst().orElseThrow();if(p.get("x").getAsInt()!=savedX)throw new AssertionError("Position not restored");
+                var shortcuts = reconnect.waitFor("stats", 5).getAsJsonArray("skillShortcuts");
+                if (shortcuts.get(9).getAsInt() != 0) throw new AssertionError("Shortcut not restored");
+            }
             System.out.println("PASS: PostgreSQL contains the new position; reconnect restores it.");
         } finally {for(Bot b:bots)try{b.close();}catch(Exception ignored){}database.DatabaseManager.close();}
     }

@@ -124,7 +124,9 @@ public final class WebSession extends MySession {
                     menuChoices = in.readUnsignedByte();
                     JsonArray choices = new JsonArray();
                     for (int i = 0; i < menuChoices; i++) choices.add(in.readUTF());
-                    send(java.util.Map.of("type", "menu", "npc", menuNpc, "text", text, "choices", choices));
+                    var template = GameCatalog.npcs.get(menuNpc);
+                    int portrait = in.available() >= 2 ? in.readShort() : template != null && template.avatar > 0 ? template.avatar : -1;
+                    send(java.util.Map.of("type", "menu", "npc", menuNpc, "text", text, "choices", choices, "portrait", portrait));
                 }
                 case -125 -> {
                     String title = in.readUTF(); inputCount = in.readUnsignedByte();

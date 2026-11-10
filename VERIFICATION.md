@@ -27,3 +27,11 @@ Các bài thử ngày 10/11/2026 dùng schema thử nghiệm riêng. Năm phiên
 - Đã kiểm tra đăng nhập lại trong khi còn bản lưu chưa ghi, ngắt WebSocket trong lúc đăng nhập, bấm nút đăng nhập liên tiếp và mời giao dịch khi thông tin lần đăng nhập còn chờ ghi.
 - Nhân vật lưu tại bản đồ thiếu dữ liệu địa hình được đưa về nhà đúng hành tinh. Các bản đồ thiếu địa hình bị chặn khi chuyển map trên web.
 - Bài thử tích hợp xác nhận giới hạn 5 người, nối lại sau khi ngắt mạng, lời thoại và nhiệm vụ mở đầu, chat, giao dịch, đánh mộc nhân và vị trí lưu trên PostgreSQL. Năm bài kiểm thử Maven đều đạt.
+
+## Đối chiếu NPC, nhiệm vụ và thao tác với hai tệp RAR
+
+- Sau khi áp dụng migration, đối chiếu 164 bản ghi `map_template` trong PostgreSQL với SQL trong `SRC_NRO.rar`. Tên map, cửa chuyển map, tọa độ NPC và danh sách quái khớp sau khi bỏ qua khoảng trắng trong JSON và số khu đã chỉnh cho chế độ chơi chung. Đảo Kamê khôi phục đủ 4 NPC đúng tọa độ. Lý Tiểu Nương hiển thị mô tả nhiệm vụ số 11 và chỉ có nút Đóng trong bản web.
+- Tên, mô tả và dữ liệu của 30 nhiệm vụ chính và 125 bước khớp sau khi chuẩn hóa CRLF/LF. Bản web vẽ mũi tên gốc `myTexture2darrow3` khi NPC của bước hiện tại ở ngoài màn hình. Ảnh đại diện trong menu lấy từ gói NPC gốc hoặc từ bản ghi mẫu của NPC.
+- Bản web đọc và lưu 10 ô phím tắt trong `skills_shortcut`. Đã gán phím `0` trên khung điện thoại, thoát và đăng nhập trên desktop để kiểm tra vị trí ô. Đòn PvP bị máy chủ từ chối không phát hiệu ứng trên máy người khác. Đòn hợp lệ lên mộc nhân vẫn giảm HP và tăng bộ đếm nhiệm vụ.
+- Đã kiểm tra hai lựa chọn khi ngã gục. Về nhà hồi 1 HP cho nhân vật thử chưa có tàu đặc biệt và giữ nguyên vàng. Hồi sinh tại chỗ ở Làng Aru trừ 500 vàng theo dịch vụ gốc.
+- Tám mục thiếu lưới địa hình có ID 78, 95, 101, 116, 121, 125, 130 và 134. Hai tệp RAR cung cấp máy chủ Java và client Windows IL2CPP. Giao diện thách đấu, danh sách bạn bè và chat riêng chưa được nối vào web. Vật lý nhảy, bay, hiệu ứng chiến đấu nâng cao, phó bản và sự kiện chưa được xác nhận khớp từng trường hợp.

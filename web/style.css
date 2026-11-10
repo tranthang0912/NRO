@@ -32,7 +32,7 @@ img, canvas, .sprite, .hud, .skill { image-rendering: pixelated; }
 .auth-tabs button.active, .panel-tabs button.active { background: #d7ecb9; color: #35662c; }
 label { display: block; margin: 9px 0 3px; }
 input, select { display: block; width: 100%; min-height: 33px; border: 1px solid #ae8d62; border-radius: 3px; background: #fffaf0; color: #3b2b1b; padding: 5px 8px; }
-.primary, .panel-action, .item-row button, .context button, .revive, #npcChoices > button, #chatForm button {
+.primary, .panel-action, .item-row button, .context button, #npcChoices > button, #chatForm button {
   border: 1px solid #9b5c2d;
   border-radius: 5px;
   background: linear-gradient(#f9cf8a, #e49b47);
@@ -73,7 +73,8 @@ input, select { display: block; width: 100%; min-height: 33px; border: 1px solid
 .skill img { width: 100%; height: 100%; object-fit: contain; }
 .skill small { position: absolute; right: 4px; bottom: 3px; font-size: 8px; font-weight: bold; }
 .cooldown { position: absolute; bottom: 3px; left: 3px; right: 3px; max-height: calc(100% - 6px); background: #432e1966; pointer-events: none; }
-.revive { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); }
+.death-actions { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); display: flex; gap: 5px; white-space: nowrap; }
+.shortcut-controls { display: flex; gap: 5px; align-items: center; }
 .touch-controls { display: none; }
 .toasts { position: fixed; right: 10px; top: 90px; width: min(230px, 50vw); z-index: 6; pointer-events: none; }
 .toast { background: #ffedc7ef; border: 1px solid #94662b; color: #684217; padding: 6px 8px; margin-bottom: 3px; font-size: 12px; }

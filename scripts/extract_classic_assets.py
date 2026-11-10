@@ -19,7 +19,7 @@ UI_IMAGES = {
     'mytexture2dskill', 'mytexture2dskill2', 'mytexture2dchat', 'mytexture2dbtx',
     'mytexture2dimgmoney', 'mytexture2dimgdiamond', 'mytexture2dpea0',
     'mytexture2dfirebtn0', 'mytexture2dbong',
-    'mytexture2dbtmenu1', 'mytexture2dbtmenu2', 'mytexture2dhatdau',
+    'mytexture2dbtmenu1', 'mytexture2dbtmenu2', 'mytexture2dhatdau', 'mytexture2darrow3',
 }
 ASSETS = {'res/logo/logo2', 'res/myfont/tahoma_7'}
 ASSETS.update('res/x1/mainimage/' + name for name in UI_IMAGES)

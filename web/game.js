@@ -106,15 +106,18 @@
         for (const id of actors.keys()) if (!present.has(id)) actors.delete(id);
         if (selected?.kind === 'mob') { const m = state.mobs.find(m => m.id === selected.id); if (!m || m.dead) selected = null; }
         if (selected?.kind === 'player' && !actors.has(selected.id)) selected = null;
-        $('revive').hidden = !actors.get(ownId)?.dead;
+        $('deathActions').hidden = !actors.get(ownId)?.dead;
         updateContext(); break;
       }
       case 'stats':
         const previousStats = stats;
         stats = data; updateHUD(); updateSkills();
         updateTask(data.task);
-        const key = { character: 'potential', social: 'clan' }[currentPanel];
-        if (key && JSON.stringify(previousStats?.[key]) !== JSON.stringify(data[key])) renderPanel(); break;
+        if (currentPanel === 'character' && (previousStats?.potential !== data.potential
+          || JSON.stringify(previousStats?.skillShortcuts) !== JSON.stringify(data.skillShortcuts)
+          || data.skills.some((skill, index) => previousStats?.skills[index]?.level !== skill.level))) renderPanel();
+        if (currentPanel === 'social' && previousStats?.clan?.id !== data.clan?.id) renderPanel();
+        break;
       case 'task': updateTask(data.task); break;
       case 'openBox': bagTab = 'box'; togglePanel('inventory'); renderPanel(); break;
       case 'inventory': inventory = data; if (currentPanel === 'inventory') renderPanel(); break;
@@ -129,11 +132,7 @@
       case 'tutorial': {
         openDialog(clean(data.text), [button('Tiếp tục', () => $('npcDialog').close())]);
         $('npcDialog').dataset.kind = 'tutorial';
-        if (data.portrait >= 0) {
-          const portrait = element('img', undefined, 'npc-portrait');
-          portrait.src = iconUrl(data.portrait); portrait.alt = '';
-          $('npcText').before(portrait);
-        }
+        showPortrait(data.portrait);
         break;
       }
       case 'npcChat':
@@ -181,16 +180,28 @@
       }));
     }
   }
+  const shortcutKeys = '1234567890';
   let skillSignature = '';
+  let cooldownSlots = [];
   function updateSkills() {
-    const skills = stats?.skills.filter(s => s.level > 0) || [], signature = JSON.stringify(skills.map(s => [s.id, s.level]));
+    const learned = stats.skills.filter(skill => skill.level > 0);
+    const slots = stats.skillShortcuts.map(id => learned.find(skill => skill.id === id));
+    const signature = JSON.stringify(slots.map(skill => skill && [skill.id, skill.level]));
+    if (!learned.some(skill => skill.id === selectedSkill)) selectedSkill = slots.find(Boolean)?.id ?? learned[0]?.id;
     if (signature !== skillSignature) {
       skillSignature = signature; $('skills').replaceChildren();
-      if (!skills.some(s => s.id === selectedSkill)) selectedSkill = skills[0]?.id || 0;
-      skills.slice(0, 9).forEach((s, index) => {
-        const b = button('', () => { selectedSkill = s.id; updateSkills(); attack(); }, 'skill');
-        b.dataset.skill = s.id; b.title = `${s.name} cấp ${s.level} · phím ${index + 1}`; b.setAttribute('aria-label', b.title);
-        const i = element('img'); i.src = iconUrl(s.icon); i.alt = s.name; b.append(i, element('small', index + 1), element('span', '', 'cooldown')); $('skills').append(b);
+      cooldownSlots = [];
+      slots.forEach((skill, index) => {
+        if (!skill) return;
+        const b = button('', () => { selectedSkill = skill.id; updateSkills(); attack(); }, 'skill');
+        b.dataset.skill = skill.id;
+        b.title = `${skill.name} cấp ${skill.level} · phím ${shortcutKeys[index]}`;
+        b.setAttribute('aria-label', b.title);
+        const icon = element('img'); icon.src = iconUrl(skill.icon); icon.alt = '';
+        const cooldown = element('span', '', 'cooldown');
+        cooldownSlots.push({ id: skill.id, cooldown });
+        b.append(icon, element('small', shortcutKeys[index]), cooldown);
+        $('skills').append(b);
       });
     }
     document.querySelectorAll('.skill').forEach(b => b.classList.toggle('active', +b.dataset.skill === selectedSkill));
@@ -200,8 +211,15 @@
     $('npcDialog').querySelector('.npc-portrait')?.remove();
   }
   function openDialog(text, choices) { resetDialog(); stopMovement(); $('npcText').textContent = text; $('npcChoices').replaceChildren(...choices); if (!$('npcDialog').open) $('npcDialog').showModal(); }
+  function showPortrait(id) {
+    if (!(id >= 0)) return;
+    const portrait = element('img', undefined, 'npc-portrait');
+    portrait.src = iconUrl(id); portrait.alt = '';
+    $('npcText').before(portrait);
+  }
   function openMenu(data) {
     openDialog(clean(data.text), data.choices.map((choice, index) => button(clean(choice), () => { $('npcDialog').close(); send({ type: 'menu', id: data.npc, choice: index }); })));
+    showPortrait(data.portrait);
   }
   function openInput(data) {
     resetDialog(); stopMovement(); $('npcText').textContent = clean(data.title); const form = element('form');
@@ -263,6 +281,23 @@
       [['HP tối đa', stats?.maxHp, 0], ['KI tối đa', stats?.maxMp, 1], ['Sức đánh', stats?.damage, 2], ['Giáp', stats?.defense, 3], ['Chí mạng', stats?.crit || 0, 4]].forEach(([label, value, stat]) => root.append(statRow(label, number(value), button('+', () => send({ type: 'upgrade', stat, amount: 1 }), 'panel-action'))));
       root.append(element('h3', 'Kỹ năng'));
       stats?.skills.forEach(s => root.append(statRow(s.name, s.level > 0 ? `Cấp ${s.level}` : 'Chưa học')));
+      if (stats) {
+        root.append(element('h3', 'Phím tắt kỹ năng'));
+        const controls = element('div', '', 'shortcut-controls');
+        const slot = element('select'); slot.setAttribute('aria-label', 'Ô phím tắt');
+        const skill = element('select'); skill.setAttribute('aria-label', 'Kỹ năng gán');
+        const empty = element('option', 'Bỏ gán'); empty.value = -1; skill.append(empty);
+        for (const learned of stats.skills.filter(item => item.level > 0)) {
+          const option = element('option', learned.name); option.value = learned.id; skill.append(option);
+        }
+        stats.skillShortcuts.forEach((id, index) => {
+          const option = element('option', `Phím ${shortcutKeys[index]}`); option.value = index; slot.append(option);
+        });
+        const selectAssigned = () => { skill.value = stats.skillShortcuts[Number(slot.value)]; if (skill.selectedIndex < 0) skill.value = -1; };
+        slot.addEventListener('change', selectAssigned); selectAssigned();
+        controls.append(slot, skill, button('Gán', () => send({ type: 'skillShortcut', slot: +slot.value, skill: +skill.value }), 'panel-action'));
+        root.append(controls);
+      }
       root.append(element('p', 'Gặp sư phụ trên hành tinh của bạn để học và nâng cấp kỹ năng.'));
     } else if (currentPanel === 'task') {
       if (!task?.name) { root.append(element('p', 'Hiện tại không có nhiệm vụ nào')); return; }
@@ -290,7 +325,7 @@
         ['Đi theo', 'Bảo vệ', 'Tấn công', 'Về nhà', 'Hợp thể'].forEach((text, status) => root.append(button(text, () => send({ type: 'petStatus', status }), 'panel-action')));
       }
     } else {
-      const lines = [['Di chuyển', 'WASD hoặc phím mũi tên. Giữ W/↑ để bay và tiêu hao KI.'], ['Nhảy', 'Space hoặc nút ↥ trên điện thoại.'], ['Tấn công', 'Chọn quái rồi nhấn J hoặc ĐÁNH. Phím 1–9 chọn kỹ năng.'], ['Tương tác', 'Đến gần NPC hoặc lối đi rồi nhấn E.'], ['Nhặt vật phẩm', 'Đến gần vật phẩm rồi nhấn F.'], ['Hồi phục', 'Nhấn R hoặc ĐẬU để ăn đậu trong túi.'], ['Gặp bạn bè', 'Đến cùng bản đồ và khu để thấy nhau.'], ['Trò chuyện', 'Nhấn Enter, nhập tin nhắn và gửi.'], ['Lưu tiến trình', 'Tự lưu định kỳ và khi thoát. Dùng nút Thoát để lưu ngay.']];
+      const lines = [['Di chuyển', 'WASD hoặc phím mũi tên. Giữ W/↑ để bay và tiêu hao KI.'], ['Nhảy', 'Space hoặc nút ↥ trên điện thoại.'], ['Tấn công', 'Chọn quái rồi nhấn J hoặc ĐÁNH. Gán phím 1–9 và 0 trong tab Kỹ năng.'], ['Tương tác', 'Đến gần NPC hoặc lối đi rồi nhấn E.'], ['Nhặt vật phẩm', 'Đến gần vật phẩm rồi nhấn F.'], ['Hồi phục', 'Nhấn R hoặc ĐẬU để ăn đậu trong túi.'], ['Gặp bạn bè', 'Đến cùng bản đồ và khu để thấy nhau.'], ['Trò chuyện', 'Nhấn Enter, nhập tin nhắn và gửi.'], ['Lưu tiến trình', 'Tự lưu định kỳ và khi thoát. Dùng nút Thoát để lưu ngay.']];
       root.append(button('Thoát game', logout, 'panel-action'));
       for (const [title, text] of lines) root.append(element('h3', title), element('p', text));
     }
@@ -401,7 +436,7 @@
     else if (npc && distance(me, npc) <= 60) send({ type: 'npc', id: npc.id });
   }
   function attack() {
-    if (!joined || $('npcDialog').open || !stats) return;
+    if (!joined || $('npcDialog').open || selectedSkill == null) return;
     let target = selected;
     if (!target) { const mob = nearest('mob'); if (mob) { target = { kind: 'mob', id: mob.id }; selected = target; } }
     const request = { type: 'attack', skill: selectedSkill }; if (target) request[target.kind] = target.id; send(request);
@@ -446,6 +481,30 @@
       if (arrow.complete && arrow.naturalWidth) ctx.drawImage(arrow, Math.round(x - arrow.naturalWidth / 2), Math.round(y - 31));
       label(p.name, x, y - 35, 'yellow');
     }
+  }
+  function drawTaskArrow(player, time) {
+    const step = task?.subtasks?.[task.index];
+    if (!player || player.dead || !step || step.npcId < 0 || step.mapId !== map.id
+      || $('npcDialog').open || Math.floor(time / 50) % 10 < 5) return;
+    const npc = map.npcs.reduce((nearest, candidate) => {
+      if (candidate.id !== step.npcId) return nearest;
+      return !nearest || Math.abs(candidate.x - player.x) < Math.abs(nearest.x - player.x) ? candidate : nearest;
+    }, null);
+    if (!npc) return;
+    const x = npc.x - cameraX, y = npc.y - cameraY;
+    if (x > 0 && x < width && y > 0 && y < height) return;
+    const arrow = img('/classic/assets/x1/mainimage/mytexture2darrow3.png');
+    if (!arrow.complete || !arrow.naturalWidth) return;
+    const dx = npc.x - player.x, dy = npc.y - player.y;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const edgeX = horizontal ? dx < 0 ? 10 : width - 10 : width / 2;
+    const edgeY = horizontal ? height / 2 + 10 : dy < 0 ? 10 : height - 10;
+    const angle = horizontal ? dx < 0 ? Math.PI : 0 : (dy < 0 ? -1 : 1) * Math.PI / 2;
+    ctx.save();
+    ctx.translate(Math.round(edgeX), Math.round(edgeY));
+    ctx.rotate(angle);
+    ctx.drawImage(arrow, -6, -8);
+    ctx.restore();
   }
   function drawNpc(npc) {
     if (![3, 4].includes(npc.id)) {
@@ -518,8 +577,12 @@
         ctx.fillStyle = '#fff8c9'; ctx.shadowColor = '#ffc95f'; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(x, y, 3 + 3 * Math.sin(progress * Math.PI), 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
       }
       ClassicScene.decorations(ctx, img, map, width, height, cameraX, cameraY, true);
+      drawTaskArrow(me, time);
       if (!$('panel').hidden) drawPortrait(me);
-      document.querySelectorAll('.skill').forEach(b => { const skill = stats?.skills.find(s => s.id === +b.dataset.skill); if (skill) b.querySelector('.cooldown').style.height = `${Math.max(0, Math.min(100, (skill.cooldown - (Date.now() - skill.lastUse)) / Math.max(1, skill.cooldown) * 100))}%`; });
+      for (const slot of cooldownSlots) {
+        const skill = stats?.skills.find(s => s.id === slot.id);
+        if (skill) slot.cooldown.style.height = `${Math.max(0, Math.min(100, (skill.cooldown - (Date.now() - skill.lastUse)) / Math.max(1, skill.cooldown) * 100))}%`;
+      }
     }
     requestAnimationFrame(draw);
   }
@@ -562,7 +625,10 @@
     else if (key === 'i') { if ($('panel').hidden) togglePanel('inventory'); else closePanel(); }
     else if (key === 'escape') closePanel();
     else if (key === 'enter') openChat();
-    else if (/^[1-9]$/.test(key)) { const skill = stats?.skills.filter(s => s.level > 0)[+key - 1]; if (skill) { selectedSkill = skill.id; updateSkills(); } }
+    else if (shortcutKeys.includes(key) && key.length === 1) {
+      const skill = stats?.skills.find(s => s.level > 0 && s.id === stats.skillShortcuts[shortcutKeys.indexOf(key)]);
+      if (skill) { selectedSkill = skill.id; updateSkills(); }
+    }
     sendMovement();
   });
   document.addEventListener('keyup', e => { keys.delete(e.key.toLowerCase()); if (joined) sendMovement(); });
@@ -584,6 +650,7 @@
     if ($('chat').hidden) openChat(); else $('chat').hidden = true;
   });
   $('closePanel').addEventListener('click', closePanel);
+  $('returnHome').addEventListener('click', () => send({ type: 'returnHome' }));
   $('revive').addEventListener('click', () => send({ type: 'revive' }));
   function logout() {
     intentionalDisconnect = true;

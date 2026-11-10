@@ -18,6 +18,11 @@ public class LyTieuNuong extends Npc {
     @Override
     public void openBaseMenu(Player player) {
         if (canOpenNpc(player) && !TaskService.gI().checkDoneTaskTalkNpc(player, this)) {
+            if (player.getSession() instanceof web.WebSession) {
+                var task = player.playerTask.taskMain;
+                if (task != null && task.id == 11) createOtherMenu(player, ConstNpc.BASE_MENU, task.detail, "Đóng");
+                return;
+            }
             createOtherMenu(player, ConstNpc.BASE_MENU,
                     "|0| BlackGoku - Game Ngọc Rồng Chuẩn Teamobi 2025",
                     "Mua Thành Viên", "Đổi Thỏi Vàng");
@@ -26,6 +31,7 @@ public class LyTieuNuong extends Npc {
 
     @Override
     public void confirmMenu(Player player, int select) {
+        if (player.getSession() instanceof web.WebSession) return;
         if (canOpenNpc(player) && player.idMark.isBaseMenu()) {
             switch (select) {
                 case 0 -> {

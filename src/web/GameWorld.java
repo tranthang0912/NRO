@@ -165,7 +165,25 @@ public final class GameWorld implements AutoCloseable {
                 }
             }
             case "pea" -> UseItem.gI().eatPea(p);
-            case "revive" -> PlayerService.gI().hoiSinh(p);
+            case "revive" -> {
+                if (!p.isPKDHVT) PlayerService.gI().hoiSinh(p);
+            }
+            case "returnHome" -> {
+                if (!p.isDie()) throw new IllegalArgumentException("Chỉ có thể về nhà bằng cách này khi đã ngã gục.");
+                int destination = MapService.gI().isMapMaBu(p.zone.map.mapId) ? 114 : p.gender + 21;
+                ChangeMapService.gI().changeMapBySpaceShip(p, destination, 0, -1);
+            }
+            case "skillShortcut" -> {
+                byte[] shortcuts = p.playerSkill.skillShortCut;
+                int slot = bounded(d, "slot", 0, shortcuts.length - 1);
+                int skillId = bounded(d, "skill", -1, Byte.MAX_VALUE);
+                if (skillId >= 0) {
+                    var skill = p.playerSkill.getSkillbyId(skillId);
+                    if (skill == null || skill.point <= 0) throw new IllegalArgumentException("Kỹ năng chưa học.");
+                }
+                shortcuts[slot] = (byte) skillId;
+                s.send(PlayerView.stats(p));
+            }
             case "upgrade" -> p.nPoint.increasePoint((byte)bounded(d,"stat",0,4),(short)bounded(d,"amount",1,100));
             case "input" -> {
                 JsonArray values=d.getAsJsonArray("values");
@@ -368,7 +386,9 @@ public final class GameWorld implements AutoCloseable {
         if(mob!=null&&distance(p.location.x,p.location.y,mob.location.x,mob.location.y)>Math.max(110,selected.dx+40))return;
         if(target!=null&&distance(p.location.x,p.location.y,target.location.x,target.location.y)>Math.max(110,selected.dx+40))return;
         if(selected.template.type==1&&mob==null&&target==null)return;
-        SkillService.gI().useSkill(p,target,mob,0,null);
+        long lastUse = selected.lastTimeUseThisSkill;
+        if (!SkillService.gI().useSkill(p,target,mob,-1,null)
+                || selected.template.type != 1 || selected.lastTimeUseThisSkill == lastUse) return;
         for(var other:sessions)if(other.player!=null&&other.player.zone==p.zone)other.send(Map.of("type","attack","id",p.id,"skill",skill,"x",p.location.x,"y",p.location.y,"targetX",mob!=null?mob.location.x:target!=null?target.location.x:p.location.x+s.facing*70,"targetY",mob!=null?mob.location.y:target!=null?target.location.y:p.location.y));
     }
     private void move(WebSession s) {

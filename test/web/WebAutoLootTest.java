@@ -13,6 +13,16 @@ import server.Manager;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WebAutoLootTest {
+    @Test void collectsInventoryDragonBallsWithoutStartingCarriedPvpEventsThatLockTravel() {
+        ItemMap ordinary = drop(14, 12, 250, -1);
+        drop(353, 12, 5, -1);
+        drop(372, 12, 6, -1);
+        drop(362, 12, 7, -1);
+        assertSame(ordinary, loot.select(player, 1_000));
+        zone.removeItemMap(ordinary);
+        assertNull(loot.select(player, 1_100));
+    }
+
     private final Player player = new Player();
     private final Zone zone = new Zone(null, 0, 5);
     private final WebAutoLoot loot = new WebAutoLoot();

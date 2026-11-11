@@ -50,6 +50,9 @@ final class WebAutoLoot {
     private static boolean eligible(Player player, ItemMap item) {
         if (item == null || item.zone != player.zone || item.itemTemplate == null || item.isPickedUp) return false;
         int id = item.itemTemplate.id;
+        // Carrying these starts a PvP event and imposes map-transfer / resurrection rules.
+        // Keep event participation manual so it cannot interrupt either automation mode.
+        if (item.isNamecBall || item.isBlackBall || id == 362) return false;
         // These are scenery / personal quest interactions, handled by their own quest step.
         if (id == 74 || id == 78 || item.itemTemplate.type == 22) return false;
         int nativeOwner = Math.abs(item.playerId > 100_000_000
@@ -63,7 +66,7 @@ final class WebAutoLoot {
     private static boolean canFit(Player player, ItemMap item) {
         int id = item.itemTemplate.id, type = item.itemTemplate.type;
         if (type == 9) return player.inventory.gold <= Inventory.LIMIT_GOLD - item.quantity;
-        if (type == 10 || type == 34 || type == 13 || id == 453 || item.isBlackBall || item.isNamecBall) return true;
+        if (type == 10 || type == 34 || type == 13 || id == 453) return true;
         if (id == 517) return player.inventory.itemsBag.size() < Inventory.MAX_ITEMS_BAG;
         if (id == 518) return player.inventory.itemsBox.size() < Inventory.MAX_ITEMS_BOX;
         if (InventoryService.gI().getCountEmptyBag(player) > 0) return true;

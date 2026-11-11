@@ -11,6 +11,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebCombatTargetTest {
+    @Test void aRespawnedMobIsNotThePreviousFightWhenTheQuestHasAlreadyChanged() {
+        var zone = new Zone(null, 0, 5);
+        var player = new Player();
+        player.zone = zone;
+        Mob mother = mob(zone, 30);
+        var targets = new WebCombatTarget();
+        targets.select(player, m -> true, m -> false, 1_000);
+        mother.point.sethp(60);
+        targets.markEngaged(mother);
+        mother.setDie();
+        // Native maps reuse the same Mob instance when it respawns while the player is dead or stunned.
+        mother.point.sethp(100);
+        assertNull(targets.keepEngaged(player, 5_000), "The previous life was already finished; proceed with the new quest target");
+    }
+
     @Test void retriesAfterDefeatOnlyWhileTheSameQuestMobLosesSignificantHealth() {
         var zone = new Zone(null, 0, 5);
         var player = new Player();

@@ -13,6 +13,7 @@ final class WebCombatTarget {
     private final Map<Mob, Long> blocked = new IdentityHashMap<>();
     private Mob current;
     private boolean engaged;
+    private long selectedLastDeath;
     private long lastProgress;
     private long previousHp;
     private double bestDistance;
@@ -21,15 +22,17 @@ final class WebCombatTarget {
 
     Mob current() { return current; }
 
-    void release() { current = null; engaged = false; }
+    void release() { current = null; engaged = false; recoveryTarget = null; }
 
     void markEngaged(Mob mob) {
-        if (current == mob && !mob.isDie()) engaged = true;
+        if (current != mob) return;
+        if (mob.isDie()) release();
+        else engaged = true;
     }
 
     Mob keepEngaged(Player player, long now) {
         if (!engaged) return null;
-        if (eligible(player, current, mob -> true) && continueTarget(player, now)) return current;
+        if (sameLife() && eligible(player, current, mob -> true) && continueTarget(player, now)) return current;
         release();
         return null;
     }
@@ -49,7 +52,7 @@ final class WebCombatTarget {
     }
 
     Mob select(Player player, Predicate<Mob> matches, Predicate<Mob> claimed, long now) {
-        if (eligible(player, current, matches) && continueTarget(player, now)) return current;
+        if (sameLife() && eligible(player, current, matches) && continueTarget(player, now)) return current;
         release();
         blocked.values().removeIf(until -> until <= now);
         boolean bestClaimed = true;
@@ -66,6 +69,7 @@ final class WebCombatTarget {
             }
         }
         if (current != null) {
+            selectedLastDeath = current.lastTimeDie;
             previousHp = current.point.hp;
             lastProgress = now;
         }
@@ -83,6 +87,8 @@ final class WebCombatTarget {
         blocked.put(current, now + RETRY_MS);
         return false;
     }
+
+    private boolean sameLife() { return current != null && current.lastTimeDie == selectedLastDeath; }
 
     private static boolean eligible(Player player, Mob mob, Predicate<Mob> matches) {
         return mob != null && mob.zone == player.zone && !mob.isDie() && !mob.isBigBoss() && matches.test(mob);

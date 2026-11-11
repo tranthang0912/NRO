@@ -325,7 +325,7 @@ final class WebAutomation {
             objective = id;
             objectiveCount = step.count;
             lastProgress = System.currentTimeMillis();
-            lastBossSearch = retryRouteAt = retryActionAt = 0;
+            lastBossSearch = retryRouteAt = retryActionAt = retryDifficultyAt = 0;
             objectivePower = player.nPoint.power;
         }
         boolean gainPower = WebQuestTargets.power(id);
@@ -669,12 +669,16 @@ final class WebAutomation {
                 training = false;
                 nextLeg = route;
                 lastProgress = now;
+            } else {
+                grind(player);
+                return;
             }
         }
         if (!training && nextLeg != null) {
             resumeWork();
             followLeg(player);
-        } else grind(player);
+        } else if (training) grind(player);
+        else waitFor("Auto NV đang chờ tính tiếp đường tới quái nhiệm vụ.");
     }
 
     private void farm(Player player) {
@@ -979,6 +983,7 @@ final class WebAutomation {
             else approachNpc(player, trip.npcId());
             return;
         }
+        if (waitForCarriedBall(player)) return;
         Zone before = player.zone;
         confirmTransport(player, npc, trip.menu(), trip.option());
         nextLeg = null;
@@ -1070,6 +1075,7 @@ final class WebAutomation {
     }
 
     void enterPortal(Player player, WayPoint portal) {
+        if (waitForCarriedBall(player)) return;
         Zone before = player.zone;
         session.world.portal(session, portal);
         nextLeg = null;
@@ -1079,6 +1085,12 @@ final class WebAutomation {
             retryRouteAt = now + 3_000;
             waitFor("Auto NV đang chờ lối đi mở hoặc tìm đường khác.");
         }
+    }
+
+    private boolean waitForCarriedBall(Player player) {
+        if (player.idNRNM == -1 || Util.canDoWithTime(player.lastTimePickNRNM, 30_000)) return false;
+        waitFor("Auto đang chờ hết thời gian giữ ngọc Namek để đổi map, sau đó sẽ đi tiếp nhiệm vụ.");
+        return true;
     }
 
     private Leg findRoute(Player player, Predicate<map.Map> goal) {

@@ -47,12 +47,15 @@ final class WebAutomation {
     private static final long QUEST_TIMEOUT_MS = 90000;
     private final WebSession session;
     private final WebCombatTarget targets = new WebCombatTarget();
+    private final WebAutoLoot loot = new WebAutoLoot();
     private final WebQuestCombat questCombat = new WebQuestCombat();
+    private final WebQuestTraining questTraining = new WebQuestTraining();
     private final Map<WayPoint, Long> blockedExits = new IdentityHashMap<>();
     private Mode mode = Mode.OFF;
     private String waiting = "";
     private boolean recovering;
     private boolean needBagSpace;
+    private boolean collectingLoot;
     private Zone combatZone;
     private long lastProgress;
     private long lastBossSearch;
@@ -109,6 +112,7 @@ final class WebAutomation {
         resetMotion();
         questCombat.reset(player);
         mode = requested;
+        questTraining.clear();
         previousZone = null;
         nextLeg = null;
         transitStarted = 0;
@@ -130,6 +134,7 @@ final class WebAutomation {
         recovering = false;
         needBagSpace = false;
         targets.clear();
+        loot.clear();
         blockedExits.clear();
         publish("");
     }
@@ -138,6 +143,7 @@ final class WebAutomation {
         if (!old.active()) return;
         old.questCombat.reset(session.player);
         mode = old.mode;
+        questTraining.restore(old.questTraining);
         recovering = old.recovering;
         needBagSpace = old.needBagSpace;
         reviveAt = old.reviveAt;
@@ -161,10 +167,12 @@ final class WebAutomation {
         if (active()) resetMotion();
         questCombat.reset(session.player);
         mode = Mode.OFF;
+        questTraining.clear();
         previousZone = null;
         nextLeg = null;
         waiting = "";
         targets.clear();
+        loot.clear();
         publish(reason);
     }
 
@@ -204,6 +212,7 @@ final class WebAutomation {
         }
         session.direction = session.vertical = 0;
         session.jump = false;
+        collectingLoot = false;
         if (player.isDie()) {
             questCombat.reset(player);
             reviveForAutomation(player);
@@ -213,11 +222,16 @@ final class WebAutomation {
         if (combatZone != player.zone) {
             combatZone = player.zone;
             targets.clear();
+            loot.clear();
             questCombat.reset(player);
         }
         if (player.newSkill.isStartSkillSpecial || player.effectSkill.isHaveEffectSkill()) return;
         try {
-            if (mode == Mode.FARM) {
+            long now = System.currentTimeMillis();
+            boolean fighting = targets.keepEngaged(player, now) != null || fightingQuestBoss(player);
+            if (!fighting && !WebQuestTransit.pending(player) && collectGroundLoot(player, now)) {
+                lastProgress = now;
+            } else if (mode == Mode.FARM) {
                 farm(player);
             } else {
                 quest(player);
@@ -267,6 +281,12 @@ final class WebAutomation {
         lossObjective = id;
         lossCount = count;
         lastCombatLossAt = now;
+        Mob mob = targets.current();
+        if (mob != null && mob.zone == player.zone && WebQuestDifficulty.canAttemptQuest(player, mob)
+                && targets.progressedSinceLastDefeat()) {
+            combatLosses = 0;
+            return;
+        }
         if (++combatLosses < 2) return;
         var points = player.nPoint;
         battleRecovery = new BattleRecovery(id, player.zone, now + 30_000, points.power, points.dame, points.hpMax, points.def);
@@ -640,7 +660,7 @@ final class WebAutomation {
     }
 
     private void hunt(Player player, IntPredicate matches) {
-        Predicate<Mob> filter = mob -> matches.test(mob.tempId) && WebQuestDifficulty.canFight(player, mob);
+        Predicate<Mob> filter = mob -> matches.test(mob.tempId) && WebQuestDifficulty.canAttemptQuest(player, mob);
         if (hasMob(player.zone, filter)) {
             training = false;
             nextLeg = null;
@@ -723,7 +743,7 @@ final class WebAutomation {
         trainQuestDamage(player, now);
         if (trainingNoticeObjective != objective) {
             trainingNoticeObjective = objective;
-            session.notice("Auto NV đang luyện ở bãi vừa sức để chuẩn bị cho bước nhiệm vụ hiện tại.");
+            session.notice("Auto NV đang luyện Sức đánh và chuẩn bị HP vì quái nhiệm vụ hiện tại còn quá mạnh.");
         }
         int level = Service.gI().getCurrLevel(player);
         Predicate<Mob> safe = mob -> safeTrainingMob(player, mob) && (battleRecovery == null || mob.zone != battleRecovery.zone());
@@ -777,7 +797,6 @@ final class WebAutomation {
     }
 
     private void fightMob(Player player, Predicate<Mob> matches) {
-        collectNearbyLoot(player);
         Mob target = targets.select(player, matches, mob -> session.world.mobClaimedByAnother(session, mob), System.currentTimeMillis());
         if (target != null) strike(player, null, target, target.location.x, target.location.y);
         else {
@@ -786,17 +805,31 @@ final class WebAutomation {
         }
     }
 
-    private void collectNearbyLoot(Player player) {
-        if (!Util.canDoWithTime(player.idMark.getLastTimePickItem(), 1000)) return;
-        boolean bagHasRoom = InventoryService.gI().getCountEmptyBag(player) > 0;
-        for (ItemMap item : player.zone.items) {
-            if (item.playerId != player.id || item.itemTemplate == null || distance(player, item.x, item.y) > 65) continue;
-            int type = item.itemTemplate.type;
-            if (type == 9 || type == 10 || type == 34 || type == 6 && bagHasRoom) {
+    private boolean collectGroundLoot(Player player, long now) {
+        ItemMap item = loot.select(player, now);
+        if (item == null) return false;
+        collectingLoot = true;
+        questCombat.reset(player);
+        resumeWork();
+        if (distance(player, item.x, item.y) <= 65) {
+            if (Util.canDoWithTime(player.idMark.getLastTimePickItem(), 1000)) {
                 session.world.pickup(session, item);
-                return;
+                if (player.zone.items.contains(item)) loot.defer(item, now);
             }
+        } else aim(player, item.x, item.y, 12, 24);
+        return true;
+    }
+
+    private boolean fightingQuestBoss(Player player) {
+        if (mode != Mode.QUEST) return false;
+        int id = TaskService.gI().getIdTask(player), boss = WebQuestTargets.boss(id);
+        if (boss == 0) return false;
+        int trigger = WebQuestTargets.bossTrigger(id);
+        for (Player target : player.zone.getBosses()) {
+            if (!target.isDie() && (WebQuestTargets.matchesBoss(target, id, boss)
+                    || trigger != 0 && WebQuestTargets.matchesBoss(target, id, trigger))) return true;
         }
+        return false;
     }
 
     private void huntBoss(Player player, int id, int boss) {
@@ -879,9 +912,8 @@ final class WebAutomation {
         if (objective <= TASK_3_0 || objective == TASK_27_0 || now < retryDamageTrainingAt) return;
         retryDamageTrainingAt = now + 1_000;
         var points = player.nPoint;
-        if (training && trainingHealthGoal > points.hpMax) WebQuestActions.trainRequiredHealth(points, trainingHealthGoal);
         long reserve = training ? Math.min(potentialForSkill, points.tiemNang / 2) : potentialForSkill;
-        WebQuestActions.trainDamage(points, points.getDameLimit(), reserve);
+        questTraining.upgrade(points, training ? trainingHealthGoal : 0, reserve);
     }
 
     private boolean readyForCombat(Player player) {
@@ -1041,7 +1073,7 @@ final class WebAutomation {
     }
 
     boolean approaches(WayPoint portal) {
-        return active() && portal != null && nextLeg != null && nextLeg.portal == portal;
+        return active() && !collectingLoot && portal != null && nextLeg != null && nextLeg.portal == portal;
     }
 
     void enterPortal(Player player, WayPoint portal) {

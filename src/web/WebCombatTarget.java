@@ -16,6 +16,8 @@ final class WebCombatTarget {
     private long lastProgress;
     private long previousHp;
     private double bestDistance;
+    private Mob recoveryTarget;
+    private long recoveryHp;
 
     Mob current() { return current; }
 
@@ -34,7 +36,16 @@ final class WebCombatTarget {
 
     void clear() {
         release();
+        recoveryTarget = null;
         blocked.clear();
+    }
+
+    boolean progressedSinceLastDefeat() {
+        if (current == null || current.isDie()) return false;
+        long before = recoveryTarget == current ? recoveryHp : current.point.maxHp;
+        recoveryTarget = current;
+        recoveryHp = current.point.hp;
+        return before - recoveryHp >= Math.max(1, (current.point.maxHp + 9L) / 10);
     }
 
     Mob select(Player player, Predicate<Mob> matches, Predicate<Mob> claimed, long now) {

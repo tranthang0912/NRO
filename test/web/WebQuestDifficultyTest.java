@@ -11,6 +11,27 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebQuestDifficultyTest {
+    @Test void questCanChallengeASnailAfterThePowerStepWithoutRequiringSafeAfkStats() {
+        Player player = new Player();
+        player.nPoint.hpMax = 230;
+        player.nPoint.dame = 60;
+        player.nPoint.def = 2;
+        Mob snail = mob(ConstMob.OC_MUON_HON, 1, 2_000);
+        assertFalse(WebQuestDifficulty.canFight(player, snail), "AFK farming still avoids a fight requiring resurrection");
+        assertTrue(WebQuestDifficulty.canAttemptQuest(player, snail), "Quest mode can make useful progress and revive in place");
+        assertFalse(WebQuestDifficulty.canAttemptQuest(player, mob(ConstMob.OC_MUON_HON, 1, 200_000)));
+    }
+
+    @Test void trainingHealthGoalCoversTheWholeFightInsteadOfOnlyOneCounterattack() {
+        Player player = new Player();
+        player.nPoint.hpMax = 230;
+        player.nPoint.dame = 100;
+        Mob snail = mob(ConstMob.OC_MUON_HON, 1, 2_000);
+        assertFalse(WebQuestDifficulty.canFight(player, snail));
+        player.nPoint.hpMax = (int) WebQuestDifficulty.minimumHealth(player, snail);
+        assertTrue(WebQuestDifficulty.canFight(player, snail), "Training must prepare enough HP to actually unlock the quest target");
+    }
+
     @Test void avoidsAGrindingMobWhenItsZoneHasAnOverpoweringHostileBoss() {
         Zone zone = new Zone(null, 0, 5);
         Player player = new Player();

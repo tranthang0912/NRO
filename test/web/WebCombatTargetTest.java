@@ -7,8 +7,29 @@ import player.Player;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebCombatTargetTest {
+    @Test void retriesAfterDefeatOnlyWhileTheSameQuestMobLosesSignificantHealth() {
+        var zone = new Zone(null, 0, 5);
+        var player = new Player();
+        player.zone = zone;
+        Mob target = mob(zone, 30);
+        target.point.maxHp = 100;
+        var targets = new WebCombatTarget();
+        targets.select(player, m -> true, m -> false, 1_000);
+        target.point.sethp(75);
+        assertTrue(targets.progressedSinceLastDefeat());
+        assertFalse(targets.progressedSinceLastDefeat());
+        target.point.sethp(60);
+        assertTrue(targets.progressedSinceLastDefeat());
+        target.point.sethp(58);
+        assertFalse(targets.progressedSinceLastDefeat());
+        target.point.sethp(100);
+        assertFalse(targets.progressedSinceLastDefeat());
+    }
+
     @Test void holdsProgressingTargetAndSkipsOneThatStalls() {
         var zone = new Zone(null, 0, 5);
         var player = new Player();

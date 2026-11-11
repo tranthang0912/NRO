@@ -86,12 +86,13 @@ final class WebQuestActions {
         return true;
     }
 
-    static void trainRequiredHealth(NPoint points, long goal) {
+    static void trainRequiredHealth(NPoint points, long goal, long budget) {
         if (points.hpMax >= goal || points.hpg + 20L > points.getHpMpLimit()) return;
         int amount = (int) Math.min(1_000, Math.min((goal - points.hpMax + 19) / 20,
                 (points.getHpMpLimit() - (long) points.hpg) / 20));
-        long budget = points.tiemNang / 5;
-        while (amount > 0 && amount * (2L * (points.hpg + 1_000) + amount * 20L - 20) / 2 > budget) amount--;
+        budget = Math.min(budget, points.tiemNang);
+        while (amount > 0 && (amount * (2L * (points.hpg + 1_000) + amount * 20L - 20) / 2 > budget
+                || amount * (2L * (points.hpg + 1_000) + amount * 20L - 20) > Integer.MAX_VALUE)) amount--;
         if (amount > 0) points.increasePoint(HP, (short) amount);
     }
 

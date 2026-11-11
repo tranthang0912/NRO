@@ -9,17 +9,25 @@ import services.SkillService;
 final class WebQuestDifficulty {
     private WebQuestDifficulty() {}
 
+    static boolean canAttemptQuest(Player player, Mob mob) {
+        if (canFight(player, mob)) return true;
+        if (mob.isBigBoss() || mob.lvMob != 0 || dangerousBoss(player, mob)) return false;
+        long counters = Math.max(0, (player.nPoint.hpMax - 1L) / counterAttack(player, mob));
+        long progress = Math.max(1, player.nPoint.dame) * counters * 2;
+        // Quest mode can revive for free. Try an ordinary target when each life can
+        // remove at least 10% HP; repeated defeats without real progress still back off.
+        return counters > 0 && progress >= Math.max(1, (mob.point.maxHp + 9L) / 10);
+    }
+
     static boolean canFight(Player player, Mob mob) {
         if (mob.isBigBoss()) return false;
-        if (mob.zone != null && mob.zone.getBosses().stream().anyMatch(boss -> !boss.isDie()
-                && SkillService.gI().canAttackPlayer(boss, player)
-                && boss.nPoint.dame - (long) player.nPoint.def > player.nPoint.hpMax / 2L)) return false;
+        if (dangerousBoss(player, mob)) return false;
         if (mob.tempId == ConstMob.MOC_NHAN || mob.tempId == ConstMob.BU_NHIN_MA_QUAI) return true;
         return estimatedDamageTaken(player, mob) <= Math.max(1, player.nPoint.hpMax * 3L / 4);
     }
 
     static long minimumHealth(Player player, Mob mob) {
-        return Math.max(1, counterAttack(player, mob) * 4 / 3 + 1);
+        return Math.max(1, estimatedDamageTaken(player, mob) * 4 / 3 + 1);
     }
 
     private static long estimatedDamageTaken(Player player, Mob mob) {
@@ -34,5 +42,11 @@ final class WebQuestDifficulty {
         long mobHp = mob.point.maxHp;
         long counter = mob.point.dame > 0 ? mob.point.dame : mobHp * Math.max(0, mob.pDame) / 100;
         return Math.max(1, counter + mob.level * 3L - player.nPoint.def);
+    }
+
+    private static boolean dangerousBoss(Player player, Mob mob) {
+        return mob.zone != null && mob.zone.getBosses().stream().anyMatch(boss -> !boss.isDie()
+                && SkillService.gI().canAttackPlayer(boss, player)
+                && boss.nPoint.dame - (long) player.nPoint.def > player.nPoint.hpMax / 2L);
     }
 }

@@ -35,14 +35,8 @@ final class WebAutomation {
     private record Leg(WayPoint portal, WebQuestTransit.Trip trip) {}
     private record Route(map.Map map, Leg first) {}
     private record StudyTrip(WebQuestStudy.Mentor mentor, WebQuestStudy.Lesson lesson, long deadline) {}
-    private record BattleRecovery(int objective, Zone zone, long retryAt, long power, int damage, int hp, int defense) {
-        boolean ready(Player player, long now) {
-            var points = player.nPoint;
-            return now >= retryAt && (points.power - power >= Math.max(1_000, power / 20)
-                    || points.dame - (long) damage >= Math.max(1, damage / 4)
-                    || points.hpMax - (long) hp >= Math.max(1, hp / 4)
-                    || points.def - (long) defense >= Math.max(1, defense / 4));
-        }
+    private record BattleRecovery(int objective, Zone zone, long retryAt) {
+        boolean ready(long now) { return now >= retryAt; }
     }
     private static final long QUEST_TIMEOUT_MS = 90000;
     private final WebSession session;
@@ -288,13 +282,12 @@ final class WebAutomation {
             return;
         }
         if (++combatLosses < 2) return;
-        var points = player.nPoint;
-        battleRecovery = new BattleRecovery(id, player.zone, now + 30_000, points.power, points.dame, points.hpMax, points.def);
+        battleRecovery = new BattleRecovery(id, player.zone, now + 30_000);
         combatLosses = 0;
         targets.clear();
         nextLeg = null;
         retryRouteAt = 0;
-        session.notice("Auto NV sẽ lui về bãi vừa sức vì nhân vật đã gục liên tiếp ở bước này.");
+        session.notice("Auto NV sẽ luyện tạm 30 giây vì chưa đánh tiến triển, rồi thử lại đúng nhiệm vụ.");
     }
 
     private void quest(Player player) throws Exception {
@@ -351,7 +344,7 @@ final class WebAutomation {
         int home = 21 + player.gender;
         if (needBagSpace && makeBagSpace(player, home)) return;
         if (battleRecovery != null) {
-            if (battleRecovery.objective() == id && !battleRecovery.ready(player, now)) {
+            if (battleRecovery.objective() == id && !battleRecovery.ready(now)) {
                 grind(player);
                 return;
             }

@@ -11,10 +11,11 @@ final class WebQuestDifficulty {
 
     static boolean canAttemptQuest(Player player, Mob mob) {
         if (canFight(player, mob)) return true;
-        if (mob.isBigBoss() || mob.lvMob != 0 || dangerousBoss(player, mob)) return false;
+        if (mob.isBigBoss() || mob.lvMob != 0) return false;
         long counters = Math.max(0, (player.nPoint.hpMax - 1L) / counterAttack(player, mob));
         long progress = Math.max(1, player.nPoint.dame) * counters * 2;
-        // Quest mode can revive for free. Try an ordinary target when each life can
+        // Quest mode can revive with native protection even with a roaming boss present.
+        // Try an ordinary target when each life can
         // remove at least 10% HP; repeated defeats without real progress still back off.
         return counters > 0 && progress >= Math.max(1, (mob.point.maxHp + 9L) / 10);
     }

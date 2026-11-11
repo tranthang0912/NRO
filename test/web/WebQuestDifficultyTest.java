@@ -11,6 +11,27 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WebQuestDifficultyTest {
+    @Test void questStillAttemptsItsOrdinaryMobWhenARoamingBossSharesTheOnlyQuestMap() {
+        Zone zone = new Zone(null, 0, 5);
+        Player player = new Player();
+        player.zone = zone;
+        player.nPoint.hp = player.nPoint.hpMax = 410;
+        player.nPoint.dame = 70;
+        player.nPoint.def = 2;
+        Mob snail = mob(ConstMob.OC_MUON_HON, 1, 2_000);
+        snail.zone = zone;
+        Player boss = new Player();
+        boss.zone = zone;
+        boss.isBoss = true;
+        boss.typePk = ConstPlayer.PK_ALL;
+        boss.nPoint.hp = 1_000;
+        boss.nPoint.dame = 500;
+        zone.addPlayer(boss);
+
+        assertFalse(WebQuestDifficulty.canFight(player, snail), "AFK farming keeps avoiding the hostile boss");
+        assertTrue(WebQuestDifficulty.canAttemptQuest(player, snail), "A roaming boss must not indefinitely replace a viable quest with dinosaur farming");
+    }
+
     @Test void questCanChallengeASnailAfterThePowerStepWithoutRequiringSafeAfkStats() {
         Player player = new Player();
         player.nPoint.hpMax = 230;

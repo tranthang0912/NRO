@@ -18,6 +18,7 @@ import npc.list.Whis;
 import player.Player;
 import player.Service.InventoryService;
 import server.MenuController;
+import server.Manager;
 import services.Service;
 import services.SkillService;
 import services.TaskService;
@@ -34,7 +35,15 @@ final class WebAutomation {
     private record Leg(WayPoint portal, WebQuestTransit.Trip trip) {}
     private record Route(map.Map map, Leg first) {}
     private record StudyTrip(WebQuestStudy.Mentor mentor, WebQuestStudy.Lesson lesson, long deadline) {}
-    private static final Predicate<Mob> ANY_MOB = mob -> true;
+    private record BattleRecovery(int objective, Zone zone, long retryAt, long power, int damage, int hp, int defense) {
+        boolean ready(Player player, long now) {
+            var points = player.nPoint;
+            return now >= retryAt && (points.power - power >= Math.max(1_000, power / 20)
+                    || points.dame - (long) damage >= Math.max(1, damage / 4)
+                    || points.hpMax - (long) hp >= Math.max(1, hp / 4)
+                    || points.def - (long) defense >= Math.max(1, defense / 4));
+        }
+    }
     private static final long QUEST_TIMEOUT_MS = 90000;
     private final WebSession session;
     private final WebCombatTarget targets = new WebCombatTarget();
@@ -44,7 +53,6 @@ final class WebAutomation {
     private String waiting = "";
     private boolean recovering;
     private boolean needBagSpace;
-    private Zone farmZone;
     private Zone combatZone;
     private long lastProgress;
     private long lastBossSearch;
@@ -58,6 +66,19 @@ final class WebAutomation {
     private int objective = -1;
     private int objectiveCount = -1;
     private long objectivePower;
+    private long retryDifficultyAt;
+    private boolean training;
+    private long trainingHealthGoal;
+    private int trainingNoticeObjective = -1;
+    private int lastAttackObjective = -1;
+    private long lastQuestAttackAt;
+    private int lossObjective = -1;
+    private int combatLosses;
+    private int lossCount = -1;
+    private long lastCombatLossAt;
+    private BattleRecovery battleRecovery;
+    private Zone avoidedFarmZone;
+    private long retryFarmZoneAt;
     private Zone previousZone;
     private Leg nextLeg;
     private long transitStarted;
@@ -85,18 +106,22 @@ final class WebAutomation {
             stop("Hãy kết thúc giao dịch hoặc trận đấu, rồi bật Auto khi nhân vật còn sống.");
             return;
         }
-        if (requested == Mode.FARM && !hasMob(player.zone, ANY_MOB)) {
-            stop("Khu vực này không có quái để tự đánh.");
-            return;
-        }
         resetMotion();
         questCombat.reset(player);
         mode = requested;
-        farmZone = requested == Mode.FARM ? player.zone : null;
         previousZone = null;
         nextLeg = null;
         transitStarted = 0;
         objective = objectiveCount = -1;
+        trainingNoticeObjective = lastAttackObjective = lossObjective = -1;
+        retryDifficultyAt = lastQuestAttackAt = lastCombatLossAt = 0;
+        combatLosses = 0;
+        lossCount = -1;
+        training = false;
+        trainingHealthGoal = 0;
+        battleRecovery = null;
+        avoidedFarmZone = null;
+        retryFarmZoneAt = 0;
         lastBossSearch = retryRouteAt = retryActionAt = reviveAt = retryDamageTrainingAt = 0;
         retryStudyAt = potentialForSkill = 0;
         studyTrip = null;
@@ -113,11 +138,17 @@ final class WebAutomation {
         if (!old.active()) return;
         old.questCombat.reset(session.player);
         mode = old.mode;
-        farmZone = old.farmZone;
         recovering = old.recovering;
         needBagSpace = old.needBagSpace;
         reviveAt = old.reviveAt;
         retryDamageTrainingAt = old.retryDamageTrainingAt;
+        lossObjective = old.lossObjective;
+        combatLosses = old.combatLosses;
+        lossCount = old.lossCount;
+        lastCombatLossAt = old.lastCombatLossAt;
+        battleRecovery = old.battleRecovery;
+        avoidedFarmZone = old.avoidedFarmZone;
+        retryFarmZoneAt = old.retryFarmZoneAt;
         lastProgress = System.currentTimeMillis();
         publish("");
     }
@@ -130,7 +161,7 @@ final class WebAutomation {
         if (active()) resetMotion();
         questCombat.reset(session.player);
         mode = Mode.OFF;
-        farmZone = previousZone = null;
+        previousZone = null;
         nextLeg = null;
         waiting = "";
         targets.clear();
@@ -175,8 +206,7 @@ final class WebAutomation {
         session.jump = false;
         if (player.isDie()) {
             questCombat.reset(player);
-            if (mode == Mode.FARM) stop("Auto đánh đã dừng vì nhân vật ngã gục trong khu treo.");
-            else reviveForQuest(player);
+            reviveForAutomation(player);
             return;
         }
         reviveAt = 0;
@@ -188,8 +218,7 @@ final class WebAutomation {
         if (player.newSkill.isStartSkillSpecial || player.effectSkill.isHaveEffectSkill()) return;
         try {
             if (mode == Mode.FARM) {
-                if (player.zone != farmZone) stop("Auto đánh đã dừng vì nhân vật đổi khu vực.");
-                else fightMob(player, ANY_MOB);
+                farm(player);
             } else {
                 quest(player);
             }
@@ -201,20 +230,25 @@ final class WebAutomation {
         previousDirection = session.direction;
     }
 
-    private void reviveForQuest(Player player) {
+    private void reviveForAutomation(Player player) {
         var task = player.playerTask.taskMain;
-        if (task == null || task.id == 29 || task.index >= task.subTasks.size()
+        if (mode == Mode.QUEST && (task == null || task.id == 29 || task.index >= task.subTasks.size())
                 || player.isPKDHVT || player.idNRNM != -1 || MapService.gI().isMapBlackBallWar(player.zone.map.mapId)) {
-            stop("Auto NV không thể hồi sinh ở khu vực hoặc nhiệm vụ này.");
+            stop("Auto không thể hồi sinh ở khu vực hoặc nhiệm vụ này.");
             return;
         }
         long now = System.currentTimeMillis();
         if (reviveAt == 0) {
+            if (mode == Mode.QUEST) recordCombatLoss(player, now);
+            else {
+                avoidedFarmZone = player.zone;
+                retryFarmZoneAt = now + 60_000;
+                targets.clear();
+            }
             reviveAt = now + 2_000;
             resetMotion();
             session.velocityY = 0;
-            targets.clear();
-            waitFor("Auto NV sẽ hồi sinh miễn phí tại chỗ.");
+            waitFor(mode == Mode.QUEST ? "Auto NV sẽ hồi sinh miễn phí tại chỗ." : "Auto treo sẽ hồi sinh miễn phí và tìm bãi khác.");
             return;
         }
         if (now < reviveAt) return;
@@ -223,6 +257,24 @@ final class WebAutomation {
         Service.gI().hsChar(player, player.nPoint.hpMax, player.nPoint.mpMax);
         reviveAt = now + 2_000;
         resumeWork();
+    }
+
+    private void recordCombatLoss(Player player, long now) {
+        int id = TaskService.gI().getIdTask(player);
+        if (lastAttackObjective != id || now - lastQuestAttackAt > 8_000 || WebMabuQuest.applies(id)) return;
+        int count = player.playerTask.taskMain.subTasks.get(player.playerTask.taskMain.index).count;
+        if (lossObjective != id || now - lastCombatLossAt > 45_000 || count != lossCount) combatLosses = 0;
+        lossObjective = id;
+        lossCount = count;
+        lastCombatLossAt = now;
+        if (++combatLosses < 2) return;
+        var points = player.nPoint;
+        battleRecovery = new BattleRecovery(id, player.zone, now + 30_000, points.power, points.dame, points.hpMax, points.def);
+        combatLosses = 0;
+        targets.clear();
+        nextLeg = null;
+        retryRouteAt = 0;
+        session.notice("Auto NV sẽ lui về bãi vừa sức vì nhân vật đã gục liên tiếp ở bước này.");
     }
 
     private void quest(Player player) throws Exception {
@@ -242,7 +294,18 @@ final class WebAutomation {
         }
         var step = task.subTasks.get(task.index);
         int id = TaskService.gI().getIdTask(player);
-        if (id != objective) questCombat.reset(player);
+        long now = System.currentTimeMillis();
+        Mob engaged = targets.keepEngaged(player, now);
+        if (engaged != null) {
+            strike(player, null, engaged, engaged.location.x, engaged.location.y);
+            return;
+        }
+        if (id != objective) {
+            questCombat.reset(player);
+            retryDifficultyAt = 0;
+            training = false;
+            trainingHealthGoal = 0;
+        }
         if (player.zone != previousZone || id != objective || step.count != objectiveCount) {
             previousZone = player.zone;
             nextLeg = null;
@@ -257,7 +320,6 @@ final class WebAutomation {
             objectivePower = player.nPoint.power;
             lastProgress = System.currentTimeMillis();
         }
-        long now = System.currentTimeMillis();
         if (nextLeg != null && now - lastProgress > QUEST_TIMEOUT_MS) {
             if (nextLeg.portal != null) blockedExits.put(nextLeg.portal, now + 15_000);
             nextLeg = null;
@@ -268,6 +330,15 @@ final class WebAutomation {
         }
         int home = 21 + player.gender;
         if (needBagSpace && makeBagSpace(player, home)) return;
+        if (battleRecovery != null) {
+            if (battleRecovery.objective() == id && !battleRecovery.ready(player, now)) {
+                grind(player);
+                return;
+            }
+            battleRecovery = null;
+            nextLeg = null;
+            retryRouteAt = retryDifficultyAt = 0;
+        }
         if (id == TASK_3_0 || id == TASK_27_0) {
             switch (WebQuestActions.train(player, id)) {
                 case PROGRESSED -> { resumeWork(); lastProgress = now; }
@@ -569,25 +640,65 @@ final class WebAutomation {
     }
 
     private void hunt(Player player, IntPredicate matches) {
-        Predicate<Mob> filter = mob -> matches.test(mob.tempId);
-        if (hasMob(player.zone, filter)) fightMob(player, filter);
-        else travel(player, map -> hasMob(map.zones.get(0), filter));
-    }
-
-    private void grind(Player player) {
-        int level = Service.gI().getCurrLevel(player);
-        Predicate<Mob> suitable = mob -> mob.tempId != consts.ConstMob.MOC_NHAN
-                && mob.level >= Math.max(1, level - 5) && mob.level <= level + 3;
-        if (hasMob(player.zone, suitable)) {
+        Predicate<Mob> filter = mob -> matches.test(mob.tempId) && WebQuestDifficulty.canFight(player, mob);
+        if (hasMob(player.zone, filter)) {
+            training = false;
             nextLeg = null;
-            fightMob(player, suitable);
+            fightMob(player, filter);
             return;
         }
         long now = System.currentTimeMillis();
+        if ((nextLeg == null || training) && now >= retryDifficultyAt) {
+            retryDifficultyAt = now + 3_000;
+            trainingHealthGoal = minimumQuestHealth(player, matches);
+            Leg route = findRoute(player, map -> hasMob(map.zones.get(0), filter));
+            if (route != null) {
+                training = false;
+                nextLeg = route;
+                lastProgress = now;
+            }
+        }
+        if (!training && nextLeg != null) {
+            resumeWork();
+            followLeg(player);
+        } else grind(player);
+    }
+
+    private void farm(Player player) {
+        objective = TaskService.gI().getIdTask(player);
+        if (WebQuestTransit.pending(player)) {
+            waitFor("Auto treo đang chờ tàu tới bãi luyện.");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Mob engaged = targets.keepEngaged(player, now);
+        if (engaged != null) {
+            strike(player, null, engaged, engaged.location.x, engaged.location.y);
+            return;
+        }
+        Predicate<Mob> safe = mob -> safeTrainingMob(player, mob)
+                && (mob.zone != avoidedFarmZone || now >= retryFarmZoneAt);
+        int level = Service.gI().getCurrLevel(player);
+        Predicate<Mob> preferred = mob -> safe.test(mob) && mob.level >= Math.max(1, level - 3) && mob.level <= level + 2;
+        if (hasMob(player.zone, preferred)) {
+            nextLeg = null;
+            fightMob(player, preferred);
+            return;
+        }
+        if (nextLeg != null && now - lastProgress > QUEST_TIMEOUT_MS) {
+            if (nextLeg.portal != null) blockedExits.put(nextLeg.portal, now + 15_000);
+            nextLeg = null;
+            retryRouteAt = now + 2_000;
+        }
         if (nextLeg == null && now >= retryRouteAt) {
-            nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), suitable));
-            if (nextLeg == null && !hasMob(player.zone, ANY_MOB)) {
-                nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), ANY_MOB));
+            nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), preferred));
+            if (nextLeg == null && !hasMob(player.zone, safe)) {
+                nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), safe));
+            }
+            if (nextLeg == null && !hasMob(player.zone, safe)
+                    && player.zone.mobs.stream().noneMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN)) {
+                nextLeg = findRoute(player, map -> map.zones.get(0).mobs.stream()
+                        .anyMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN));
             }
             lastProgress = now;
             retryRouteAt = now + 3_000;
@@ -595,11 +706,70 @@ final class WebAutomation {
         if (nextLeg != null) {
             resumeWork();
             followLeg(player);
-        } else if (hasMob(player.zone, ANY_MOB)) {
-            fightMob(player, ANY_MOB);
+        } else if (hasMob(player.zone, safe)) {
+            fightMob(player, safe);
+        } else if (player.zone.mobs.stream().anyMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN)) {
+            fightMob(player, mob -> mob.tempId == consts.ConstMob.MOC_NHAN);
+        } else waitFor("Auto treo đang chờ lối mở tới bãi luyện vừa sức.");
+    }
+
+    private static boolean safeTrainingMob(Player player, Mob mob) {
+        return mob.tempId != consts.ConstMob.MOC_NHAN && mob.lvMob == 0 && WebQuestDifficulty.canFight(player, mob);
+    }
+
+    private void grind(Player player) {
+        training = true;
+        long now = System.currentTimeMillis();
+        trainQuestDamage(player, now);
+        if (trainingNoticeObjective != objective) {
+            trainingNoticeObjective = objective;
+            session.notice("Auto NV đang luyện ở bãi vừa sức để chuẩn bị cho bước nhiệm vụ hiện tại.");
+        }
+        int level = Service.gI().getCurrLevel(player);
+        Predicate<Mob> safe = mob -> safeTrainingMob(player, mob) && (battleRecovery == null || mob.zone != battleRecovery.zone());
+        Predicate<Mob> suitable = mob -> safe.test(mob) && mob.level >= Math.max(1, level - 5) && mob.level <= level + 3;
+        if (hasMob(player.zone, suitable)) {
+            nextLeg = null;
+            fightMob(player, suitable);
+            return;
+        }
+        if (nextLeg == null && now >= retryRouteAt) {
+            nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), suitable));
+            if (nextLeg == null && !hasMob(player.zone, safe)) {
+                nextLeg = findRoute(player, map -> hasMob(map.zones.get(0), safe));
+            }
+            if (nextLeg == null && !hasMob(player.zone, safe)
+                    && player.zone.mobs.stream().noneMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN)) {
+                nextLeg = findRoute(player, map -> map.zones.get(0).mobs.stream()
+                        .anyMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN));
+            }
+            lastProgress = now;
+            retryRouteAt = now + 3_000;
+        }
+        if (nextLeg != null) {
+            resumeWork();
+            followLeg(player);
+        } else if (hasMob(player.zone, safe)) {
+            fightMob(player, safe);
+        } else if (player.zone.mobs.stream().anyMatch(mob -> mob.tempId == consts.ConstMob.MOC_NHAN)) {
+            fightMob(player, mob -> mob.tempId == consts.ConstMob.MOC_NHAN);
         } else {
             waitFor("Auto NV đang chờ khu vực phù hợp để luyện tập.");
         }
+    }
+
+    private static long minimumQuestHealth(Player player, IntPredicate matches) {
+        long minimum = Long.MAX_VALUE;
+        for (var map : Manager.MAPS) {
+            if (map.zones.isEmpty() || (map.type != ConstMap.MAP_NORMAL && map.type != ConstMap.MAP_OFFLINE)
+                    || ChangeMapService.gI().checkMapCanJoin(player, map.zones.get(0)) == null) continue;
+            for (Mob mob : map.zones.get(0).mobs) {
+                if (matches.test(mob.tempId) && !mob.isBigBoss()) {
+                    minimum = Math.min(minimum, WebQuestDifficulty.minimumHealth(player, mob));
+                }
+            }
+        }
+        return minimum == Long.MAX_VALUE ? 0 : minimum;
     }
 
     private static boolean hasMob(Zone zone, Predicate<Mob> matches) {
@@ -678,11 +848,7 @@ final class WebAutomation {
         boolean quest = mode == Mode.QUEST;
         if (quest) {
             if (player.nPoint.stamina <= 0) { waitFor("Auto NV đang chờ hồi thể lực."); return; }
-            long now = System.currentTimeMillis();
-            if (objective > TASK_3_0 && objective != TASK_27_0 && now >= retryDamageTrainingAt) {
-                retryDamageTrainingAt = now + 1_000;
-                WebQuestActions.trainDamage(player.nPoint, player.nPoint.getDameLimit(), potentialForSkill);
-            }
+            trainQuestDamage(player, System.currentTimeMillis());
             skill = questCombat.select(player, target, mob, basic, distance);
             if (skill == null) return;
             if (skill.template.type == 3 || WebQuestCombat.selfHeal(skill)) {
@@ -700,7 +866,22 @@ final class WebAutomation {
         resumeWork();
         if (distance > (skill == basic ? 78 : WebQuestCombat.range(skill))) { aim(player, x, y, 32, 42); return; }
         session.facing = x < player.location.x ? -1 : 1;
+        long before = mob == null ? 0 : mob.point.hp;
+        if (quest) {
+            lastAttackObjective = TaskService.gI().getIdTask(player);
+            lastQuestAttackAt = System.currentTimeMillis();
+        }
         session.world.attack(session, skill, target, mob, quest && skill == basic);
+        if (mob != null && mob.point.hp < before) targets.markEngaged(mob);
+    }
+
+    private void trainQuestDamage(Player player, long now) {
+        if (objective <= TASK_3_0 || objective == TASK_27_0 || now < retryDamageTrainingAt) return;
+        retryDamageTrainingAt = now + 1_000;
+        var points = player.nPoint;
+        if (training && trainingHealthGoal > points.hpMax) WebQuestActions.trainRequiredHealth(points, trainingHealthGoal);
+        long reserve = training ? Math.min(potentialForSkill, points.tiemNang / 2) : potentialForSkill;
+        WebQuestActions.trainDamage(points, points.getDameLimit(), reserve);
     }
 
     private boolean readyForCombat(Player player) {
@@ -860,7 +1041,7 @@ final class WebAutomation {
     }
 
     boolean approaches(WayPoint portal) {
-        return mode == Mode.QUEST && portal != null && nextLeg != null && nextLeg.portal == portal;
+        return active() && portal != null && nextLeg != null && nextLeg.portal == portal;
     }
 
     void enterPortal(Player player, WayPoint portal) {

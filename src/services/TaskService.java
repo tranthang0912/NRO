@@ -300,9 +300,6 @@ public class TaskService {
             if (power >= 2000000000L) {
                 doneTask(player, ConstTask.TASK_21_0);
             }
-            if (power >= 40000) {
-                doneTask(player, ConstTask.TASK_11_0);
-            }
             if (power >= 500000) {
                 doneTask(player, ConstTask.TASK_11_0);
             }
